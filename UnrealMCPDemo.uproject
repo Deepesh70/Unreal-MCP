@@ -1,0 +1,29 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.3",
+  "Category": "AI/MCP",
+  "Description": "Demo project for Unreal MCP Plugin - Minimal setup to verify plugin installation and test basic functionality",
+  "IsEnterprise": false,
+  "Modules": [
+    {
+      "Name": "UnrealMCPDemo",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "PlatformAllowList": [
+        "Win64",
+        "Mac",
+        "Linux"
+      ]
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "UnrealMCP",
+      "Enabled": true,
+      "MarketplaceURL": "",
+      "BetaVersion": false,
+      "IsExperimental": false,
+      "Installed": false
+    }
+  ]
+}
