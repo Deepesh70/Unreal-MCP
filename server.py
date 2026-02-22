@@ -50,38 +50,63 @@ async def send_ue_ws_command(object_path: str, function_name: str, parameters: d
 
 
 @mcp.tool()
-async def spawn_actor(actor_class: str, x: float = 0, y: float = 0, z: float = 0) -> str:
+async def spawn_actor(actor_class_or_asset: str, x: float = 0, y: float = 0, z: float = 0) -> str:
     """
-    Spawns an actor in the Unreal level at the specified coordinates.
-    Example actor_class: '/Script/Engine.PointLight'
+    Spawns an actor or basic shape in the Unreal level at the specified coordinates.
+    Example: 'pointlight', 'cube', 'sphere', '/Script/Engine.PointLight'
     """
-    # Optional friendly name mapping
+    actor_lower = actor_class_or_asset.lower()
+    
+    # Map friendly names to asset paths (for basic shapes)
+    asset_map = {
+        "cube": "/Engine/BasicShapes/Cube.Cube",
+        "sphere": "/Engine/BasicShapes/Sphere.Sphere",
+        "cylinder": "/Engine/BasicShapes/Cylinder.Cylinder",
+        "cone": "/Engine/BasicShapes/Cone.Cone",
+        "plane": "/Engine/BasicShapes/Plane.Plane"
+    }
+    
+    # Map friendly names to actor classes
     class_map = {
         "pointlight": "/Script/Engine.PointLight",
-        "cube": "/Script/Engine.StaticMeshActor",
-        "sphere": "/Script/Engine.StaticMeshActor",
-        "spotlight": "/Script/Engine.SpotLight"
+        "spotlight": "/Script/Engine.SpotLight",
+        "directional_light": "/Script/Engine.DirectionalLight"
     }
-    actor_class = class_map.get(actor_class.lower(), actor_class)
 
     try:
-        response = await send_ue_ws_command(
-            object_path="/Script/EditorScriptingUtilities.Default__EditorLevelLibrary",
-            function_name="SpawnActorFromClass",
-            parameters={
-                "ActorClass": actor_class,
-                "Location": {"X": x, "Y": y, "Z": z}
-            }
-        )
-        return f"Successfully spawned {actor_class} at {x}, {y}, {z}"
+        if actor_lower in asset_map:
+            # Spawn from Object (Asset)
+            response = await send_ue_ws_command(
+                object_path="/Script/EditorScriptingUtilities.Default__EditorLevelLibrary",
+                function_name="SpawnActorFromObject",
+                parameters={
+                    "ObjectToUse": asset_map[actor_lower],
+                    "Location": {"X": x, "Y": y, "Z": z}
+                }
+            )
+            name = asset_map[actor_lower]
+        else:
+            # Spawn from Class
+            resolved_class = class_map.get(actor_lower, actor_class_or_asset)
+            response = await send_ue_ws_command(
+                object_path="/Script/EditorScriptingUtilities.Default__EditorLevelLibrary",
+                function_name="SpawnActorFromClass",
+                parameters={
+                    "ActorClass": resolved_class,
+                    "Location": {"X": x, "Y": y, "Z": z}
+                }
+            )
+            name = resolved_class
+            
+        return f"Successfully spawned {name} at {x}, {y}, {z}"
     except Exception as e:
-        return f"Connection Failed: {str(e)}. Is WebControl.StartServer running in UE?"
+        return f"Connection Failed: {str(e)}. Tip: Check parameter names in Unreal version."
 
 
 @mcp.tool()
 async def list_actors() -> str:
     """
-    List all actors currently in the Unreal level.
+    List all actors currently in the Unreal level, returning their names and full paths.
     """
     try:
         response = await send_ue_ws_command(
@@ -95,14 +120,33 @@ async def list_actors() -> str:
         if not actors:
             return "No actors found or list is empty."
             
-        # Clean up the output so Claude can read it easily
-        actor_names = [a.split('.')[-1] for a in actors]
-        return f"Actors in level: {', '.join(actor_names)}"
+        # Provide both the Short Name and the Full Object Path
+        actor_info = [f"{a.split('.')[-1]} (Path: {a})" for a in actors]
+        return "Actors in level:\n" + "\n".join(actor_info)
         
     except Exception as e:
         return f"Analysis Failed: {str(e)}. Tip: Is the Editor Actor Subsystem accessible?"
 
 
+@mcp.tool()
+async def set_actor_scale(actor_path: str, scale_x: float, scale_y: float, scale_z: float) -> str:
+    """
+    Sets the 3D scale of an actor. 
+    You MUST provide the full actor_path (e.g. from the list_actors output).
+    """
+    try:
+        response = await send_ue_ws_command(
+            object_path=actor_path,
+            function_name="SetActorScale3D",
+            parameters={
+                "NewScale3D": {"X": scale_x, "Y": scale_y, "Z": scale_z}
+            }
+        )
+        return f"Successfully scaled {actor_path.split('.')[-1]} to ({scale_x}, {scale_y}, {scale_z})"
+    except Exception as e:
+        return f"Scale Failed: {str(e)}. Tip: Ensure you used the exact full path."
+
+
 if __name__ == "__main__":
-    # Start the FastMCP server
-    mcp.run()
+    # Start the FastMCP server on a local network port instead of stdio
+    mcp.run(transport="sse", host="localhost", port=8000)
