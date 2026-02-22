@@ -34,7 +34,7 @@ async def run_unreal_agent():
     # Create the Agent
     agent = create_agent(llm, tools)
     
-    prompt = "Use your tools to spawn a pointlight in the Unreal Engine level at coordinates X:0, Y:0, Z:200. Then list all the actors to confirm it worked."
+    prompt = "Spawn a pointlight at X:0, Y:0, Z:100. Next, use the list_actors tool to find the exact name of the light you just spawned. Finally, use that name to change its color to pure Red. Then list all the actors to confirm it worked."
     print(f"\n🗣️ Prompt: {prompt}\n")
     
     # Execute the agent
