@@ -1,121 +1,152 @@
-import requests
+import asyncio
+import json
+import websockets
 from fastmcp import FastMCP
 
 # 1. Initialize the MCP Server
-mcp = FastMCP("UnrealToy")
+mcp = FastMCP("UnrealToyWebSocket")
 
-# 2. Configuration - The "Door" to Unreal
-UE_API_URL = "http://localhost:30010/remote/object/call"
+# 2. Configuration - The "Telephone Line" to Unreal
+UE_WS_URL = "ws://127.0.0.1:30020"
 
-@mcp.tool()
-def spawn_actor(actor_class: str, x: float = 0, y: float = 0, z: float = 0):
+async def send_ue_ws_command(object_path: str, function_name: str, parameters: dict = None):
     """
-    Spawns an actor in the Unreal level at the specified coordinates.
-    Example actor_class: '/Script/Engine.PointLight'
+    Helper function that wraps the standard Remote Control HTTP payload 
+    into the format Unreal's WebSocket server expects.
     """
-    # class_map = {
-    #     "pointlight": "/Script/Engine.PointLight",
-    #     "cube": "/Script/Engine.StaticMeshActor",
-    #     "sphere": "/Script/Engine.StaticMeshActor",
-    #     "spotlight": "/Script/Engine.SpotLight"
-    # }
-
-    # actor_class = class_map.get(actor_class.lower(), actor_class)
-
     payload = {
-        "objectPath": "/Script/EditorScriptingUtilities.Default__EditorLevelLibrary",
-        "functionName": "SpawnActorFromClass",
-        "parameters": {
-            "ActorClass": actor_class,
-            "Location": {"X": x, "Y": y, "Z": z}
+        "MessageName": "http",
+        "Parameters": {
+            "Url": "/remote/object/call",
+            "Verb": "PUT",
+            "Body": {
+                "objectPath": object_path,
+                "functionName": function_name
+            }
         }
     }
-
-
     
+    # Inject parameters into the Body if they exist
+    if parameters:
+        payload["Parameters"]["Body"]["parameters"] = parameters
+
     try:
-        # We use PUT because the Remote Control API requires it for 'calls'
-        response = requests.put(UE_API_URL, json=payload, timeout=5)
-        response.raise_for_status()
-        return f"Successfully spawned {actor_class} at {x}, {y}, {z}"
+        # Open a transient WebSocket connection for the tool call
+        async with websockets.connect(UE_WS_URL) as ws:
+            await ws.send(json.dumps(payload))
+            
+            # Wait for Unreal's real-time response
+            response_str = await ws.recv()
+            response_data = json.loads(response_str)
+            
+            # Check if Unreal threw an internal error
+            if response_data.get("ResponseBody", {}).get("ErrorMessage"):
+                raise Exception(response_data["ResponseBody"]["ErrorMessage"])
+                
+            return response_data
+            
     except Exception as e:
-        return f"Connection Failed: {str(e)}. Is WebControl.StartServer running in UE?"
-    
-    
-# implement all the tools below with similar structure to spawn_actor, making sure to handle any necessary parameters and API calls to Unreal Engine's Remote Control API.
+        raise Exception(f"WebSocket Error: {str(e)}")
+
 
 @mcp.tool()
-def list_actors():
+async def spawn_actor(actor_class_or_asset: str, x: float = 0, y: float = 0, z: float = 0) -> str:
     """
-    List all actors currently in the Unreal level.
+    Spawns an actor or basic shape in the Unreal level at the specified coordinates.
+    Example: 'pointlight', 'cube', 'sphere', '/Script/Engine.PointLight'
     """
-    # Using the simpler GetAllLevelActors which takes NO parameters
-    payload = {
-        "objectPath": "/Script/UnrealEd.Default__EditorActorSubsystem",
-        "functionName": "GetAllLevelActors"
+    actor_lower = actor_class_or_asset.lower()
+    
+    # Map friendly names to asset paths (for basic shapes)
+    asset_map = {
+        "cube": "/Engine/BasicShapes/Cube.Cube",
+        "sphere": "/Engine/BasicShapes/Sphere.Sphere",
+        "cylinder": "/Engine/BasicShapes/Cylinder.Cylinder",
+        "cone": "/Engine/BasicShapes/Cone.Cone",
+        "plane": "/Engine/BasicShapes/Plane.Plane"
     }
     
+    # Map friendly names to actor classes
+    class_map = {
+        "pointlight": "/Script/Engine.PointLight",
+        "spotlight": "/Script/Engine.SpotLight",
+        "directional_light": "/Script/Engine.DirectionalLight"
+    }
+
     try:
-        # Note: We use PUT for all 'calls'
-        response = requests.put(UE_API_URL, json=payload, timeout=5)
-        response.raise_for_status()
+        if actor_lower in asset_map:
+            # Spawn from Object (Asset)
+            response = await send_ue_ws_command(
+                object_path="/Script/EditorScriptingUtilities.Default__EditorLevelLibrary",
+                function_name="SpawnActorFromObject",
+                parameters={
+                    "ObjectToUse": asset_map[actor_lower],
+                    "Location": {"X": x, "Y": y, "Z": z}
+                }
+            )
+            name = asset_map[actor_lower]
+        else:
+            # Spawn from Class
+            resolved_class = class_map.get(actor_lower, actor_class_or_asset)
+            response = await send_ue_ws_command(
+                object_path="/Script/EditorScriptingUtilities.Default__EditorLevelLibrary",
+                function_name="SpawnActorFromClass",
+                parameters={
+                    "ActorClass": resolved_class,
+                    "Location": {"X": x, "Y": y, "Z": z}
+                }
+            )
+            name = resolved_class
+            
+        return f"Successfully spawned {name} at {x}, {y}, {z}"
+    except Exception as e:
+        return f"Connection Failed: {str(e)}. Tip: Check parameter names in Unreal version."
+
+
+@mcp.tool()
+async def list_actors() -> str:
+    """
+    List all actors currently in the Unreal level, returning their names and full paths.
+    """
+    try:
+        response = await send_ue_ws_command(
+            object_path="/Script/UnrealEd.Default__EditorActorSubsystem",
+            function_name="GetAllLevelActors"
+        )
         
-        # Unreal returns the list in a key called "ReturnValue"
-        actors = response.json().get("ReturnValue", [])
+        # Extract the ReturnValue from the nested WebSocket response body
+        actors = response.get("ResponseBody", {}).get("ReturnValue", [])
         
-        # Clean up the output so Claude can read it easily
-        actor_names = [a.split('.')[-1] for a in actors]
-        return f"Actors in level: {', '.join(actor_names)}"
+        if not actors:
+            return "No actors found or list is empty."
+            
+        # Provide both the Short Name and the Full Object Path
+        actor_info = [f"{a.split('.')[-1]} (Path: {a})" for a in actors]
+        return "Actors in level:\n" + "\n".join(actor_info)
         
     except Exception as e:
-        return f"Connection Failed: {str(e)}. Ensure WebControl.StartServer is active."    
+        return f"Analysis Failed: {str(e)}. Tip: Is the Editor Actor Subsystem accessible?"
 
 
-# @mcp.toop()
-# def inspect_blueprint(blueprint_path: str):
-#     """
-#     Reads the meradata and variables of a specified Blueprint asset.
-#     Use this to analyze exiting Blueprints logic.
-#     """
-#     clean_path = f"{blueprint_path}.{blueprint_path.split('/')[-1]}_C"
+@mcp.tool()
+async def set_actor_scale(actor_path: str, scale_x: float, scale_y: float, scale_z: float) -> str:
+    """
+    Sets the 3D scale of an actor. 
+    You MUST provide the full actor_path (e.g. from the list_actors output).
+    """
+    try:
+        response = await send_ue_ws_command(
+            object_path=actor_path,
+            function_name="SetActorScale3D",
+            parameters={
+                "NewScale3D": {"X": scale_x, "Y": scale_y, "Z": scale_z}
+            }
+        )
+        return f"Successfully scaled {actor_path.split('.')[-1]} to ({scale_x}, {scale_y}, {scale_z})"
+    except Exception as e:
+        return f"Scale Failed: {str(e)}. Tip: Ensure you used the exact full path."
 
-#     payload = {
-#         "objectPath": "/Script/EditorScriptingUtilities.Default__EditorBlueprintLibrary",
-#         "functionName": "GetBlueprintVariableDefaultValue",
-#         "parameters": {
-#             "Blueprint": blueprint_path,
-#             # This is tricky: to get ALL variables, we usually 
-#             # have to iterate or use the 'GetClass' reflection.
-#         }
-#     }
-
-# @mcp.tool()
-# def get_actor_components(actor_name: str):
-#     """
-#     Lists all components within a specific actor and their 'bCanEverTick' status.
-#     Use this to find performance bottlenecks in your Blueprints.
-#     """
-#     # 1. We first need to find the actual actor object path from its name
-#     # Logic: We use the Subsystem to get the actor reference
-#     payload = {
-#         "objectPath": f"/Project/CurrentLevel.{actor_name}", # Simplified path logic
-#         "functionName": "GetComponentsByClass",
-#         "parameters": {
-#             "ComponentClass": "/Script/Engine.ActorComponent"
-#         }
-#     }
-    
-#     try:
-#         # Note: In the 'Toy' version, it's often easier to 'GetClass' 
-#         # then 'GetDescriptor' to see what the Blueprint is made of.
-#         response = requests.put(UE_API_URL, json=payload, timeout=5)
-#         response.raise_for_status()
-        
-#         components = response.json().get("ReturnValue", [])
-#         return f"Components in {actor_name}: {', '.join([c.split('.')[-1] for c in components])}"
-#     except Exception as e:
-#         return f"Analysis Failed: {str(e)}. Tip: Make sure the actor is spawned in the level first."
 
 if __name__ == "__main__":
-    # Start the server using the standard transport for Claude/Cursor
-    mcp.run()
+    # Start the FastMCP server on a local network port instead of stdio
+    mcp.run(transport="sse", host="localhost", port=8000)

@@ -1,0 +1,10 @@
+fastmcp
+websockets
+
+asyncio
+langchain
+dotenv
+
+langchain_core
+langchain_groq
+langchain_mcp_adapters
