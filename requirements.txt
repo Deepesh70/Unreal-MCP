@@ -1,0 +1,7 @@
+fastmcp
+websockets
+json
+asyncio
+langchain
+dotenv
+os
