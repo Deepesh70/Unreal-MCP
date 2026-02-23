@@ -36,7 +36,7 @@ async def run_unreal_agent():
     # Create the Agent
     agent = create_agent(llm, tools)
     
-    prompt = "Spawn a cube at X:0, Y:0, Z:100. Next, use the list_actors tool to find the full path of the cube you just spawned. Then, use the set_actor_scale tool to scale that exact cube to X:5.0, Y:5.0, Z:5.0 so it is huge and easy to see. Finally, tell me that it worked."
+    prompt = "Spawn a cube at X:0, Y:0, Z:100 and sphere at X:1000, Y:1000, Z:1000. Next, use the list_actors tool to find the full path of the cube you just spawned. Then, use the set_actor_scale tool to scale that exact cube to X:500.0, Y:500.0, Z:500.0 so it is huge and easy to see. Finally, tell me that it worked."
     print(f"\n🗣️ Prompt: {prompt}\n")
     
     # Execute the agent
