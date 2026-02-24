@@ -1,52 +1,52 @@
 import asyncio
 import os
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
-# 1. We brought back your favorite LLM provider!
 from langchain_groq import ChatGroq
-from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
+# from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
-# The GROQ_API_KEY will now be automatically picked up from the environment by ChatGroq
-
 async def run_unreal_agent():
-    print("🤖 Booting up Llama 3 via Groq and connecting to Unreal Engine...")
+    print("🤖 Connecting to FastMCP Server...")
     
-    # Connect to your Unreal tools
+    # 1. Connect to your FastMCP server
     client = MultiServerMCPClient({
         "UnrealToy": {
             "transport": "sse",
             "url": "http://localhost:8000/sse"
         }
     })
-        
+    
     tools = await client.get_tools()
-    print(f"🛠️  Loaded {len(tools)} tools from FastMCP.")
+    print(f"🛠️ Loaded {len(tools)} tools.")
     
-    # 2. Initialize Groq (using a highly capable tool-calling model)
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile", 
-        temperature=0
-    )
+    # 2. Initialize Groq
+    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
     
-    # Create the Agent
-    agent = create_agent(llm, tools)
+    # 3. Setup the strict Prompt Template (Requires agent_scratchpad)
+    prompt_template = ChatPromptTemplate.from_messages([
+        ("system", "You are an Unreal Engine 3D architect. STRICT RULE: ABSOLUTELY NO PARALLEL TOOL CALLING. You must execute exactly ONE tool at a time. Never batch tool calls. If you need to spawn and scale, you must: 1. Call spawn_actor. 2. Stop generating and WAIT for the exact path. 3. Call set_actor_scale. If you guess a path like 'Path_Following_0', you fail."),
+        ("human", "{input}"),
+        ("placeholder", "{agent_scratchpad}"),
+    ])
     
-    prompt = "Spawn a cube at X:0, Y:0, Z:100 and sphere at X:1000, Y:1000, Z:1000. Next, use the list_actors tool to find the full path of the cube you just spawned. Then, use the set_actor_scale tool to scale that exact cube to X:500.0, Y:500.0, Z:500.0 so it is huge and easy to see. Finally, tell me that it worked."
-    print(f"\n🗣️ Prompt: {prompt}\n")
+    # 4. Create the Tool Calling Agent and Executor
+    agent = create_tool_calling_agent(llm, tools, prompt_template)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=60)
     
-    # Execute the agent
-    response = await agent.ainvoke({
-        "messages": [HumanMessage(content=prompt)]
-    })
+    # 5. The raw prompt (r"") protects the math syntax
+    task_prompt = r"Using the spawn_actor and set_actor_scale tools, construct a 3D circular colonnade. Calculate the coordinates to spawn 12 cubes in a perfect circle with a radius of 2000 units around the origin (X:0, Y:0). To do this, calculate the angle $\theta$ for each pillar (every 30 degrees, from 0 to 330) and use the formulas $X = 2000 \cdot \cos(\theta)$ and $Y = 2000 \cdot \sin(\theta)$. You MUST work sequentially. Spawn 1 cube at a calculated (X, Y) coordinate with a Z-height of 0. WAIT for the spawn_actor tool to return the EXACT_ACTOR_PATH. Immediately pass that exact path into the set_actor_scale tool to stretch the cube into a tall pillar (X:100.0, Y:100.0, Z:800.0). Then spawn a sphere on top at Z:800.0. Do not move to the next pillar until the current one is spawned, scaled, and topped. Do not write a Python script for me to run; execute the tool calls directly. Confirm when complete."
     
-    # Print the final answer
+    print("\n🚀 Executing ReAct Loop. Watch the terminal for tool calls...\n")
+    
+    # 6. Execute the loop
+    result = await agent_executor.ainvoke({"input": task_prompt})
+    
     print("\n✅ Final Response:")
-    print(response["messages"][-1].content)
+    print(result["output"])
 
 if __name__ == "__main__":
     asyncio.run(run_unreal_agent())
