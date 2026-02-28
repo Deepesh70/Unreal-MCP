@@ -31,12 +31,12 @@ load_dotenv()
 
 # ── Supported models ─────────────────────────────────────────────────
 SUPPORTED_MODELS = {
-    "gemini-2.5-pro":   "Most capable Gemini model, 100B+ params (estimated)",
+    "gemini-1.5-pro":   "Most capable free-tier Gemini model",
+    "gemini-2.5-pro":   "Google's most capable model (requires paid tier)",
     "gemini-2.5-flash": "Fast & efficient Gemini, large-scale",
-    "gemini-2.0-flash": "Previous gen, fast inference",
 }
 
-DEFAULT_MODEL = "gemini-2.5-pro"
+DEFAULT_MODEL = "gemini-1.5-pro"
 
 
 def create_llm(model: str = DEFAULT_MODEL):
