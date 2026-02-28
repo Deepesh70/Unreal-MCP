@@ -1,55 +1,65 @@
 """
-Unreal MCP Agent — Multi-Model CLI Launcher.
+Unreal MCP Agent - Multi-Model CLI Launcher.
 
-Run with one of three LLM backends:
+Modes:
+    python agent.py groq --build              # LIVE builder (spawns in UE!)
+    python agent.py groq --build -i           # Interactive builder
+    python agent.py groq --two-phase          # C++ code generator
+    python agent.py groq --test               # Quick test (1 API call)
 
-    python agent.py groq                    ← Full demo prompt
-    python agent.py gemini --test           ← Quick test (1 API call only)
-    python agent.py groq --interactive      ← Chat mode (type commands)
-
-Or run a backend directly:
-
-    python -m agents.groq_agent
-    python -m agents.ollama_agent --model qwen2.5:72b
-    python -m agents.gemini_agent --model gemini-2.5-flash
+Backends:
+    groq     Groq Cloud (Llama 3.1 8B free tier)
+    ollama   Local Ollama models
+    gemini   Google Gemini
 """
 
 import asyncio
 import sys
+import io
+
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
 def print_usage():
     print("""
-╔══════════════════════════════════════════════════════════════╗
-║              🎮  Unreal MCP Agent Launcher  🎮              ║
-╠══════════════════════════════════════════════════════════════╣
-║                                                              ║
-║  Usage:  python agent.py <backend> [options]                 ║
-║                                                              ║
-║  Backends:                                                   ║
-║    groq     Groq Cloud  — Llama 3.3 70B (fast, free tier)    ║
-║    ollama   Local       — 70B+ models on your GPU            ║
-║    gemini   Google      — Gemini 2.5 Pro (100B+ estimated)   ║
-║                                                              ║
-║  Options:                                                    ║
-║    --test          Quick test (1 API call, lists actors)      ║
-║    --interactive   Chat mode (type commands one by one)       ║
-║    --prompt "..."  Custom prompt                              ║
-║                                                              ║
-║  Examples:                                                   ║
-║    python agent.py groq                                      ║
-║    python agent.py gemini --test                              ║
-║    python agent.py groq --interactive                         ║
-║    python agent.py groq --prompt "spawn a cube at 0 0 200"   ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
+==============================================================
+           Unreal MCP Agent Launcher
+==============================================================
+
+  Usage:  python agent.py <backend> [mode] [options]
+
+  Backends:
+    groq      Groq Cloud (fast, free tier)
+    ollama    Local models via Ollama
+    gemini    Google Gemini API
+
+  Modes:
+    --build / -b       LIVE BUILDER: spawns objects in UE via WebSocket!
+    --two-phase / -2   C++ class generator (writes .h/.cpp files)
+    --test             Quick test (1 API call)
+    (default)          Classic tool-calling agent
+
+  Options:
+    --interactive / -i  Interactive chat mode
+    --prompt "..."      Custom prompt
+
+  Examples:
+    python agent.py groq -b -i              # Interactive builder (BEST)
+    python agent.py groq -b --prompt "build a hut"
+    python agent.py groq -2 -i              # C++ code generator
+    python agent.py groq --test             # Quick test
+
+==============================================================
 """)
 
 
 def parse_options():
-    """Parse --test, --interactive, and --prompt flags."""
     test_mode = "--test" in sys.argv
     interactive = "--interactive" in sys.argv or "-i" in sys.argv
+    two_phase = "--two-phase" in sys.argv or "-2" in sys.argv
+    build_mode = "--build" in sys.argv or "-b" in sys.argv
     prompt = None
 
     if "--prompt" in sys.argv:
@@ -57,7 +67,7 @@ def parse_options():
         if idx + 1 < len(sys.argv):
             prompt = sys.argv[idx + 1]
 
-    return test_mode, interactive, prompt
+    return test_mode, interactive, two_phase, build_mode, prompt
 
 
 async def main():
@@ -66,35 +76,61 @@ async def main():
         sys.exit(1)
 
     backend = sys.argv[1].lower()
-    test_mode, interactive, custom_prompt = parse_options()
+    test_mode, interactive, two_phase, build_mode, custom_prompt = parse_options()
 
-    # Determine prompt
-    from agents.base import run_agent, TEST_PROMPT
-    if test_mode:
-        prompt = TEST_PROMPT
-        interactive = False
-    else:
-        prompt = custom_prompt  # None = use DEFAULT_PROMPT
-
+    # ── Create LLM ──────────────────────────────────────────────
     if backend == "groq":
         from agents.groq_agent import create_llm
         llm = create_llm()
-        label = "Llama 3.1 8B via Groq (free tier)"
+        label = "Llama 3.1 8B via Groq"
 
     elif backend == "ollama":
         from agents.ollama_agent import create_llm
         llm = create_llm()
-        label = "llama3.3:70b via Ollama (local)"
+        label = "Ollama (local)"
 
     elif backend == "gemini":
         from agents.gemini_agent import create_llm
         llm = create_llm()
-        label = "gemini-2.5-pro via Google Gemini"
+        label = "Gemini 2.5 Pro"
 
     else:
-        print(f"❌ Unknown backend: '{backend}'")
+        print(f"Unknown backend: '{backend}'")
         print_usage()
         sys.exit(1)
+
+    # ── LIVE BUILD MODE (spawns in UE!) ─────────────────────────
+    if build_mode:
+        from agents.builder import build_in_ue, interactive_builder
+
+        if interactive:
+            await interactive_builder(llm, label)
+        elif custom_prompt:
+            await build_in_ue(llm, custom_prompt)
+        else:
+            await build_in_ue(llm, "build a small hut with walls, a roof, and a door")
+        return
+
+    # ── C++ Code Generation Mode ────────────────────────────────
+    if two_phase:
+        from agents.pipeline import two_phase_run, interactive_two_phase
+
+        if interactive:
+            await interactive_two_phase(llm, label)
+        elif custom_prompt:
+            await two_phase_run(llm, custom_prompt, write_files=False)
+        else:
+            await two_phase_run(llm, "Create a hut actor", write_files=False)
+        return
+
+    # ── Classic Tool-Calling Mode ───────────────────────────────
+    from agents.base import run_agent, TEST_PROMPT
+
+    if test_mode:
+        prompt = TEST_PROMPT
+        interactive = False
+    else:
+        prompt = custom_prompt
 
     await run_agent(llm, model_label=label, prompt=prompt, interactive=interactive)
 
