@@ -14,3 +14,10 @@ UE_WS_URL = "ws://127.0.0.1:30020"
 SERVER_TRANSPORT = "sse"
 SERVER_HOST = "localhost"
 SERVER_PORT = 8000
+
+# ── Unreal Project ────────────────────────────────────────────────────
+# Path to your UE project root (the folder containing .uproject)
+# Update this to match your project location!
+UE_PROJECT_PATH = "C:/Users/Jeevant/Documents/Unreal Projects/MyProject"
+UE_PROJECT_NAME = "MyProject"
+
