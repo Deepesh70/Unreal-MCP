@@ -1,10 +1,21 @@
+# ── Core ──────────────────────────────────────────────────────────────
 fastmcp
 websockets
 
-asyncio
+# ── LangChain Core ────────────────────────────────────────────────────
 langchain
-dotenv
-
 langchain_core
-langchain_groq
 langchain_mcp_adapters
+
+# ── LLM Providers ────────────────────────────────────────────────────
+langchain_groq               # Groq Cloud (Llama 3.3 70B)
+langchain_ollama             # Local Ollama (70B+ models)
+langchain_google_genai       # Google Gemini (2.5 Pro / Flash)
+
+# ── HTTP (pinned — httpx 0.28+ is incompatible with httpcore 1.0.x) ──
+httpx==0.27.2
+httpcore==1.0.7
+
+# ── Utilities ─────────────────────────────────────────────────────────
+python-dotenv
+legacy-cgi                   # Python 3.13+ compat (httpcore needs cgi module)
