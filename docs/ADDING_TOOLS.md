@@ -2,7 +2,7 @@
 
 > Step-by-step guide for extending Unreal MCP with new tools.
 
----
+------
 
 ## Quick Checklist
 
