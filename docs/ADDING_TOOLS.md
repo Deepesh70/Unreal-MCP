@@ -96,3 +96,22 @@ python server.py
 | `utils/` | Noun (what it helps with) | `response.py`, `validation.py` |
 | `config/` | Always `settings.py` | `settings.py` |
 | `connection/` | Transport type | `websocket.py` |
+
+
+// Added later
+unreal_mcp/
+├── server.py              # Main entry point (starts the server)
+├── unreal_mcp/
+│   ├── __init__.py        # Exposes the 'mcp' instance
+│   ├── connection.py      # WebSocket logic & UE communication
+│   ├── utils.py           # Shared helpers & error formatting
+│   ├── mappings/          # Asset and Class lookups
+│   │   ├── __init__.py
+│   │   ├── assets.py      # Cube, Sphere, etc.
+│   │   └── classes.py     # Light classes, etc.
+│   └── tools/             # Actual tool definitions
+│       ├── __init__.py    # Registers tools
+│       ├── spawning.py    # Spawn logic
+│       ├── actors.py      # Query/List logic
+│       └── transform.py   # Scale/Move logic
+└── .env                   # Environment variables (UE_URL, etc.)
