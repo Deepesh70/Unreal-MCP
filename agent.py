@@ -1,52 +1,103 @@
+"""
+Unreal MCP Agent — Multi-Model CLI Launcher.
+
+Run with one of three LLM backends:
+
+    python agent.py groq                    ← Full demo prompt
+    python agent.py gemini --test           ← Quick test (1 API call only)
+    python agent.py groq --interactive      ← Chat mode (type commands)
+
+Or run a backend directly:
+
+    python -m agents.groq_agent
+    python -m agents.ollama_agent --model qwen2.5:72b
+    python -m agents.gemini_agent --model gemini-2.5-flash
+"""
+
 import asyncio
-import os
-from langchain_mcp_adapters.client import MultiServerMCPClient
+import sys
 
-# 1. We brought back your favorite LLM provider!
-from langchain_groq import ChatGroq
-from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+def print_usage():
+    print("""
+╔══════════════════════════════════════════════════════════════╗
+║              🎮  Unreal MCP Agent Launcher  🎮              ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  Usage:  python agent.py <backend> [options]                 ║
+║                                                              ║
+║  Backends:                                                   ║
+║    groq     Groq Cloud  — Llama 3.3 70B (fast, free tier)    ║
+║    ollama   Local       — 70B+ models on your GPU            ║
+║    gemini   Google      — Gemini 2.5 Pro (100B+ estimated)   ║
+║                                                              ║
+║  Options:                                                    ║
+║    --test          Quick test (1 API call, lists actors)      ║
+║    --interactive   Chat mode (type commands one by one)       ║
+║    --prompt "..."  Custom prompt                              ║
+║                                                              ║
+║  Examples:                                                   ║
+║    python agent.py groq                                      ║
+║    python agent.py gemini --test                              ║
+║    python agent.py groq --interactive                         ║
+║    python agent.py groq --prompt "spawn a cube at 0 0 200"   ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+""")
 
-# The GROQ_API_KEY will now be automatically picked up from the environment by ChatGroq
 
-async def run_unreal_agent():
-    print("🤖 Booting up Llama 3 via Groq and connecting to Unreal Engine...")
-    
-    # Connect to your Unreal tools
-    client = MultiServerMCPClient({
-        "UnrealToy": {
-            "transport": "sse",
-            "url": "http://localhost:8000/sse"
-        }
-    })
-        
-    tools = await client.get_tools()
-    print(f"🛠️  Loaded {len(tools)} tools from FastMCP.")
-    
-    # 2. Initialize Groq (using a highly capable tool-calling model)
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile", 
-        temperature=0
-    )
-    
-    # Create the Agent
-    agent = create_agent(llm, tools)
-    
-    prompt = "Spawn a cube at X:0, Y:0, Z:100 and sphere at X:1000, Y:1000, Z:1000. Next, use the list_actors tool to find the full path of the cube you just spawned. Then, use the set_actor_scale tool to scale that exact cube to X:500.0, Y:500.0, Z:500.0 so it is huge and easy to see. Finally, tell me that it worked."
-    print(f"\n🗣️ Prompt: {prompt}\n")
-    
-    # Execute the agent
-    response = await agent.ainvoke({
-        "messages": [HumanMessage(content=prompt)]
-    })
-    
-    # Print the final answer
-    print("\n✅ Final Response:")
-    print(response["messages"][-1].content)
+def parse_options():
+    """Parse --test, --interactive, and --prompt flags."""
+    test_mode = "--test" in sys.argv
+    interactive = "--interactive" in sys.argv or "-i" in sys.argv
+    prompt = None
+
+    if "--prompt" in sys.argv:
+        idx = sys.argv.index("--prompt")
+        if idx + 1 < len(sys.argv):
+            prompt = sys.argv[idx + 1]
+
+    return test_mode, interactive, prompt
+
+
+async def main():
+    if len(sys.argv) < 2 or sys.argv[1].startswith("-"):
+        print_usage()
+        sys.exit(1)
+
+    backend = sys.argv[1].lower()
+    test_mode, interactive, custom_prompt = parse_options()
+
+    # Determine prompt
+    from agents.base import run_agent, TEST_PROMPT
+    if test_mode:
+        prompt = TEST_PROMPT
+        interactive = False
+    else:
+        prompt = custom_prompt  # None = use DEFAULT_PROMPT
+
+    if backend == "groq":
+        from agents.groq_agent import create_llm
+        llm = create_llm()
+        label = "Llama 3.1 8B via Groq (free tier)"
+
+    elif backend == "ollama":
+        from agents.ollama_agent import create_llm
+        llm = create_llm()
+        label = "llama3.3:70b via Ollama (local)"
+
+    elif backend == "gemini":
+        from agents.gemini_agent import create_llm
+        llm = create_llm()
+        label = "gemini-2.5-pro via Google Gemini"
+
+    else:
+        print(f"❌ Unknown backend: '{backend}'")
+        print_usage()
+        sys.exit(1)
+
+    await run_agent(llm, model_label=label, prompt=prompt, interactive=interactive)
+
 
 if __name__ == "__main__":
-    asyncio.run(run_unreal_agent())
+    asyncio.run(main())
