@@ -13,6 +13,9 @@ To add a new tool:
 
 # Each import causes the @mcp.tool() decorators inside to fire,
 # registering the tools on the shared `mcp` instance.
-from . import spawning   # noqa: F401  – spawn_actor
-from . import actors     # noqa: F401  – list_actors
-from . import transform  # noqa: F401  – set_actor_scale
+from . import spawning       # noqa: F401  – spawn_actor
+from . import actors         # noqa: F401  – list_actors
+from . import transform      # noqa: F401  – set_actor_scale
+from . import codegen_tool   # noqa: F401  – generate_ue_class, preview_ue_class
+from . import project_tool   # noqa: F401  – get_project_info, list_project_files, list_supported_types
+from . import scene_tool     # noqa: F401  – get_scene_summary
