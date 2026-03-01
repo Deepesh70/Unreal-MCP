@@ -16,6 +16,11 @@ Backends:
 import asyncio
 import sys
 import io
+import os
+
+# Suppress TensorFlow and oneDNN C++ warnings during HuggingFace embeddings load
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
