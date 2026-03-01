@@ -50,11 +50,23 @@ async def get_scene_state() -> dict:
 def format_scene_for_prompt(scene: dict) -> str:
     """Format scene state into a compact string for the LLM prompt."""
     if scene["actor_count"] == 0:
-        return "Empty scene (no existing actors)"
+        return "Empty scene (no existing actors).\nSTART YOUR BUILD AT COORDINATE: X=0, Y=0"
 
-    lines = [f"Scene has {scene['actor_count']} actors:"]
-    for actor in scene["actors"][:15]:  # Even more compact
-        # Extract just the actor name from the full path
+    # Calculate a rough safe offset so new buildings don't overlap old ones.
+    # We offset by 1500 units (15 meters) per roughly 10 actors.
+    safe_x_offset = int((scene["actor_count"] / 10) + 1) * 1500
+    
+    lines = [
+        f"CRITICAL RULES FOR THIS BUILD:",
+        f"1. The scene is ALREADY POPULATED with {scene['actor_count']} actors.",
+        f"2. You MUST offset your entire build to start at the safe origin point:",
+        f"   => RECOMMENDED BUILD ORIGIN: X={safe_x_offset}, Y=0",
+        f"3. Do NOT build at X=0, Y=0. Add {safe_x_offset} to every single X coordinate in your JSON.",
+        f"",
+        f"Existing actors for context (Sample):"
+    ]
+    
+    for actor in scene["actors"][:15]:  # Compact sample
         name = actor.split(".")[-1] if "." in actor else actor
         lines.append(f"  - {name}")
 
