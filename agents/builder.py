@@ -190,8 +190,20 @@ async def build_in_ue(llm, user_prompt: str) -> str:
         print(f"    {line}")
 
     # Phase 2: Generate build plan
-    print(f"\n[Phase 2] Generating build steps...")
+    print(f"\n[Phase 2] Generate Build Steps...")
     
+    # Phase 1.5: RAG Retrieval
+    from agents.rag_store import retrieve_blueprint
+    try:
+        blueprint_text = retrieve_blueprint(user_prompt)
+        if blueprint_text:
+            print(f"  [+] Found RAG Blueprint match! Injecting into context.")
+            scene_context += f"\n\n==== ARCHITECTURE BLUEPRINT ====\n{blueprint_text}"
+        else:
+            print(f"  [-] No RAG Blueprint found for this request.")
+    except Exception as e:
+        print(f"  [!] RAG retrieval failed (is chromadb installed?): {e}")
+
     try:
         plan = await _generate_build_plan(llm, refined, scene_context)
         
