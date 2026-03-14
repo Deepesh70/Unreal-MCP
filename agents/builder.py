@@ -35,10 +35,12 @@ async def _get_scene_context() -> str:
         return "Scene unknown"
 
 
-async def _refine_build_prompt(llm, user_prompt: str) -> str:
+async def _refine_build_prompt(llm, user_prompt: str, blueprint_context: str = "") -> str:
     """Phase 1: Convert vague request into precise build spec."""
+
+    system = BUILDER_REFINER.format(blueprint_context=blueprint_context)
     response = await llm.ainvoke([
-        SystemMessage(content=BUILDER_REFINER),
+        SystemMessage(content=system),
         HumanMessage(content=user_prompt),
     ])
     return response.content.strip()
@@ -181,10 +183,25 @@ async def build_in_ue(llm, user_prompt: str) -> str:
     scene_context = await _get_scene_context()
     print(f"  {scene_context.split(chr(10))[0]}")
 
+    # Phase 0.5: RAG Retrieval
+    from agents.rag_store import retrieve_blueprint
+    blueprint_context = ""
+    try:
+        blueprint_text = retrieve_blueprint(user_prompt)
+        if blueprint_text:
+            print(f" [+] Found RAG Blueprint match! Injecting into context.")
+
+            blueprint_context= f"\n\n === ARCHITECTURE BLUEPRINT ===\n{blueprint_text}"
+            scene_context += blueprint_context
+        else:
+            print(f" [-] No RAG Blueprint found for this request.")
+    except Exception as e:
+        print(f" [!] RAG retrieval failed (is chromadb installed?): {e}")
+
     # Phase 1: Refine
     print(f"\n[Phase 1] Planning build...")
     print(f"  Input: \"{user_prompt}\"")
-    refined = await _refine_build_prompt(llm, user_prompt)
+    refined = await _refine_build_prompt(llm, user_prompt, blueprint_context)
     print(f"\n  Plan:")
     for line in refined.split("\n"):
         print(f"    {line}")
@@ -192,17 +209,17 @@ async def build_in_ue(llm, user_prompt: str) -> str:
     # Phase 2: Generate build plan
     print(f"\n[Phase 2] Generate Build Steps...")
     
-    # Phase 1.5: RAG Retrieval
-    from agents.rag_store import retrieve_blueprint
-    try:
-        blueprint_text = retrieve_blueprint(user_prompt)
-        if blueprint_text:
-            print(f"  [+] Found RAG Blueprint match! Injecting into context.")
-            scene_context += f"\n\n==== ARCHITECTURE BLUEPRINT ====\n{blueprint_text}"
-        else:
-            print(f"  [-] No RAG Blueprint found for this request.")
-    except Exception as e:
-        print(f"  [!] RAG retrieval failed (is chromadb installed?): {e}")
+    # # Phase 1.5: RAG Retrieval
+    # from agents.rag_store import retrieve_blueprint
+    # try:
+    #     blueprint_text = retrieve_blueprint(user_prompt)
+    #     if blueprint_text:
+    #         print(f"  [+] Found RAG Blueprint match! Injecting into context.")
+    #         scene_context += f"\n\n==== ARCHITECTURE BLUEPRINT ====\n{blueprint_text}"
+    #     else:
+    #         print(f"  [-] No RAG Blueprint found for this request.")
+    # except Exception as e:
+    #     print(f"  [!] RAG retrieval failed (is chromadb installed?): {e}")
 
     try:
         plan = await _generate_build_plan(llm, refined, scene_context)

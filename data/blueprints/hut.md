@@ -1,35 +1,67 @@
-# Wooden Hut Architecture
+# Wooden Hut Architecture: Exact Coordinate Specification
 
-A classic wooden hut or cabin is composed of a floor, four surrounding exterior walls, and a sloped roof.
+This document defines the strict geometric parameters for generating a 3D wooden hut. Do not estimate, guess, or eyeball coordinates or scales. Assume the base primitive for all objects is a standard 100x100x100 unit cube centered at its pivot.
 
-## Components:
-1. **Floor Base**
-   - A flat rectangular slab.
-   - Example dimensions: 400 wide x 400 deep, but only 10 or 20 units thick.
-   - Placed exactly at Z=0.
+All coordinates (X, Y, Z) represent the EXACT center pivot of the object in world space.
 
-2. **Four Walls**
-   - The North, South, East, and West exterior walls.
-   - They must be tall (e.g., 250 to 300 units).
-   - They run along the extreme boundary edges of the floor base. Do not place them in the center coordinates.
-   - If the floor is 400 units wide, the walls must be placed at X=200 and X=-200 so they align perfectly with the edges.
-   - The Z coordinate must be half the height of the walls (e.g., if height is 300, Z=150) so they rest exactly on the floor, not sinking through it.
-   - Ensure the East and West walls are slightly shorter on the Y-axis so they slot neatly *between* the North and South walls without overlapping corners.
+## 1. Floor Base
+- **Dimensions:** 400 (X-depth) x 400 (Y-width) x 20 (Z-thickness).
+- **Scale:** `X: 4.0, Y: 4.0, Z: 0.2`
+- **Location:** `X: 0, Y: 0, Z: -10`
+- **Logic:** Placing the Z-center at -10 ensures the top surface of the floor is perfectly flush at Z=0. This establishes a clean ground plane for the walls.
 
-3. **Door Cutout / Gap**
-   - You can leave a gap in the front wall for a door, or spawn a separate smaller cube (door) inside the front wall.
-   
-4. **Sloped A-Frame Roof**
-   - A roof consists of TWO separate flat slabs (e.g. `sx: 4.0, sy: 2.5, sz: 0.2`).
-   - IMPORTANT: In Unreal Engine, objects rotate around their **center point**. 
-   - If you place two roof panels at the exact same X,Y,Z coordinates and rotate them, they will intersect in the middle and form an "X" shape!
-   - To form an A-frame resting on the walls, you MUST offset their X or Y coordinates so they meet at the top apex.
-   - For example: if the hut center is X=0, Y=0:
-     - Left roof panel: Place at Y=-100, rotated (roll=30)
-     - Right roof panel: Place at Y=100, rotated (roll=-30)
-   - The Z height of the roof center must be higher than the walls so it covers them (e.g., if walls are 300, roof Z should be 350).
+## 2. Four Exterior Walls
+The walls must form a perfect 400x400 perimeter without overlapping at the corners. The walls are 20 units thick and 300 units high. 
 
-## Build Order:
-- Floor first.
-- Four walls precisely calculated to align exactly with the mathematical edges of the floor.
-- Rotated roof pieces placed precisely on top of the wall coordinates.
+**North Wall (+X Edge)**
+- **Dimensions:** 20 (X-depth) x 400 (Y-width) x 300 (Z-height).
+- **Scale:** `X: 0.2, Y: 4.0, Z: 3.0`
+- **Location:** `X: 190, Y: 0, Z: 150`
+- **Logic:** Center X is 190 so the outer face sits precisely at X=200, perfectly flush with the floor's edge.
+
+**South Wall (-X Edge)**
+- **Dimensions:** 20 (X-depth) x 400 (Y-width) x 300 (Z-height).
+- **Scale:** `X: 0.2, Y: 4.0, Z: 3.0`
+- **Location:** `X: -190, Y: 0, Z: 150`
+- **Logic:** Mirrors the North wall exactly on the opposite side.
+
+**East Wall (+Y Edge)**
+- **Dimensions:** 360 (X-depth) x 20 (Y-width) x 300 (Z-height).
+- **Scale:** `X: 3.6, Y: 0.2, Z: 3.0`
+- **Location:** `X: 0, Y: 190, Z: 150`
+- **Logic:** The X-depth is strictly 360 (not 400). This allows the East wall to slot perfectly *between* the 20-unit thick North and South walls without Z-fighting or overlapping corners.
+
+**West Wall (-Y Edge)**
+- **Dimensions:** 360 (X-depth) x 20 (Y-width) x 300 (Z-height).
+- **Scale:** `X: 3.6, Y: 0.2, Z: 3.0`
+- **Location:** `X: 0, Y: -190, Z: 150`
+- **Logic:** Mirrors the East wall.
+
+## 3. Door Cutout
+- Do not attempt to build the North wall out of multiple complex sub-blocks. 
+- **Instruction:** Generate a solid block acting as a boolean subtractor or a visually distinct door placeholder.
+- **Dimensions:** 20 (X-depth) x 120 (Y-width) x 210 (Z-height).
+- **Scale:** `X: 0.25, Y: 1.2, Z: 2.1`
+- **Location:** `X: 190, Y: 0, Z: 105`
+- **Logic:** Z=105 rests the bottom of the 210-high door exactly at Z=0 (the floor surface).
+
+## 4. Sloped A-Frame Roof
+The roof uses exact trigonometric calculations for a 30-degree pitch to ensure the lower edges rest flawlessly on the top outer corners of the walls (Z=300), and the top edges meet exactly at the apex (Y=0).
+
+- **Dimensions (per panel):** 400 (X-depth) x 230.94 (Y-width) x 20 (Z-thickness).
+- **Scale:** `X: 4.0, Y: 2.3094, Z: 0.2`
+
+**Right Roof Panel (+Y Side)**
+- **Location:** `X: 0, Y: 3100, Z: 357.73`
+- **Rotation:** `Roll: -30.0` degrees (Pitch: 0, Yaw: 0)
+
+**Left Roof Panel (-Y Side)**
+- **Location:** `X: 0, Y: -100, Z: 357.73`
+- **Rotation:** `Roll: 30.0` degrees (Pitch: 0, Yaw: 0)
+
+## Build Order Execution:
+1. Spawn Floor.
+2. Spawn North and South walls (Full width).
+3. Spawn East and West walls (Inner width).
+4. Spawn Door volume.
+5. Spawn Left and Right Roof panels with precise rotation and Z-elevation.
