@@ -98,8 +98,13 @@ async def _generate_build_plan(llm, refined: str, scene_context: str) -> dict:
         raise
 
 
-async def _execute_build_plan(plan: dict) -> str:
+async def _execute_build_plan(plan: dict, status_callback=None) -> str:
     """Phase 3: Execute the build plan against UE via WebSocket."""
+    async def log(msg: str):
+        print("  " + msg)
+        if status_callback:
+            await status_callback(msg)
+
     steps = plan.get("steps", [])
     spawned = {}  # label -> actor_path mapping
     success = 0
@@ -127,7 +132,7 @@ async def _execute_build_plan(plan: dict) -> str:
                     if sx != 1.0 or sy != 1.0 or sz != 1.0:
                         await set_actor_scale(actor_path, float(sx), float(sy), float(sz))
 
-                print(f"  [{i+1}/{len(steps)}] Spawned {shape} -> {label}")
+                await log(f"[{i+1}/{len(steps)}] Spawned {shape} -> {label}")
                 success += 1
 
             elif action == "scale":
@@ -138,10 +143,10 @@ async def _execute_build_plan(plan: dict) -> str:
                     sy = step.get("sy", 1)
                     sz = step.get("sz", 1)
                     await set_actor_scale(actor_path, sx, sy, sz)
-                    print(f"  [{i+1}/{len(steps)}] Scaled {ref} -> ({sx}, {sy}, {sz})")
+                    await log(f"[{i+1}/{len(steps)}] Scaled {ref} -> ({sx}, {sy}, {sz})")
                     success += 1
                 else:
-                    print(f"  [{i+1}/{len(steps)}] SKIP: no path for '{ref}'")
+                    await log(f"[{i+1}/{len(steps)}] SKIP: no path for '{ref}'")
                     errors += 1
 
             elif action == "rotate":
@@ -152,28 +157,33 @@ async def _execute_build_plan(plan: dict) -> str:
                     yaw = step.get("yaw", 0)
                     roll = step.get("roll", 0)
                     await set_actor_rotation(actor_path, pitch, yaw, roll)
-                    print(f"  [{i+1}/{len(steps)}] Rotated {ref}")
+                    await log(f"[{i+1}/{len(steps)}] Rotated {ref}")
                     success += 1
                 else:
-                    print(f"  [{i+1}/{len(steps)}] SKIP: no path for '{ref}'")
+                    await log(f"[{i+1}/{len(steps)}] SKIP: no path for '{ref}'")
                     errors += 1
 
             # Small delay so UE can process
             await asyncio.sleep(0.1)
 
         except Exception as e:
-            print(f"  [{i+1}/{len(steps)}] ERROR: {e}")
+            await log(f"[{i+1}/{len(steps)}] ERROR: {e}")
             errors += 1
 
     return f"Executed {success}/{len(steps)} steps ({errors} errors)"
 
 
 # ── Main Pipeline ────────────────────────────────────────────────────
-async def build_in_ue(llm, user_prompt: str) -> str:
+async def build_in_ue(llm, user_prompt: str, status_callback=None) -> str:
     """
     Full live build pipeline.
     Refine -> Plan -> Execute in UE via WebSocket.
     """
+    async def log(msg: str):
+        print(msg)
+        if status_callback:
+            await status_callback(msg)
+
     print(f"\n{'='*60}")
     print(f"  Live Builder")
     print(f"{'='*60}")
@@ -184,7 +194,7 @@ async def build_in_ue(llm, user_prompt: str) -> str:
     print(f"  {scene_context.split(chr(10))[0]}")
 
     # Phase 0.5: RAG Retrieval
-    from agents.rag_store import retrieve_blueprint
+    from .rag_store import retrieve_blueprint
     blueprint_context = ""
     try:
         blueprint_text = retrieve_blueprint(user_prompt)
@@ -199,7 +209,7 @@ async def build_in_ue(llm, user_prompt: str) -> str:
         print(f" [!] RAG retrieval failed (is chromadb installed?): {e}")
 
     # Phase 1: Refine
-    print(f"\n[Phase 1] Planning build...")
+    await log("\n[Phase 1] Planning build...")
     print(f"  Input: \"{user_prompt}\"")
     refined = await _refine_build_prompt(llm, user_prompt, blueprint_context)
     print(f"\n  Plan:")
@@ -207,10 +217,10 @@ async def build_in_ue(llm, user_prompt: str) -> str:
         print(f"    {line}")
 
     # Phase 2: Generate build plan
-    print(f"\n[Phase 2] Generate Build Steps...")
+    await log("\n[Phase 2] Generate Build Steps...")
     
     # # Phase 1.5: RAG Retrieval
-    # from agents.rag_store import retrieve_blueprint
+    # from .rag_store import retrieve_blueprint
     # try:
     #     blueprint_text = retrieve_blueprint(user_prompt)
     #     if blueprint_text:
@@ -251,8 +261,8 @@ async def build_in_ue(llm, user_prompt: str) -> str:
         print(f"  Steps: {step_count}")
 
         # Phase 3: Execute in UE
-        print(f"\n[Phase 3] BUILDING IN UNREAL ENGINE...")
-        result = await _execute_build_plan(plan)
+        await log("\n[Phase 3] BUILDING IN UNREAL ENGINE...")
+        result = await _execute_build_plan(plan, status_callback=status_callback)
 
         print(f"\n{'='*60}")
         print(f"  BUILD COMPLETE!")
@@ -262,7 +272,7 @@ async def build_in_ue(llm, user_prompt: str) -> str:
 
         return result
     except Exception as e:
-        print(f"\n  [ERROR] Build pipeline failed: {e}")
+        await log(f"\n  [ERROR] Build pipeline failed: {e}")
         import traceback
         traceback.print_exc()
         raise
