@@ -66,5 +66,15 @@ async def send_ue_ws_command(
 
             return response_data
 
+    except ConnectionRefusedError:
+        raise Exception("Unreal Engine API is offline. Please start Unreal Engine and ensure the Remote Control Web Interface plugin is enabled.")
+    except OSError as e:
+        error_str = str(e)
+        if "1225" in error_str or "10061" in error_str or "Connection refused" in error_str:
+            raise Exception("Unreal Engine API is offline. Please start Unreal Engine and ensure the Remote Control Web Interface plugin is enabled.")
+        raise Exception(f"WebSocket Error: {error_str}")
     except Exception as e:
-        raise Exception(f"WebSocket Error: {str(e)}")
+        error_str = str(e)
+        if "1225" in error_str or "10061" in error_str or "refused" in error_str.lower():
+            raise Exception("Unreal Engine API is offline. Please start Unreal Engine and ensure the Remote Control Web Interface plugin is enabled.")
+        raise Exception(f"WebSocket Error: {error_str}")
