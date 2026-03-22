@@ -8,6 +8,10 @@ loop are identical across backends.
 
 import asyncio
 import sys
+
+# Ensure Windows consoles can print emojis without throwing a UnicodeEncodeError
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
