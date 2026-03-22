@@ -8,6 +8,10 @@ This file is now a thin launcher.  All logic lives inside the
 """
 
 from unreal_mcp import mcp
+import sys
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 from unreal_mcp.config import SERVER_HOST, SERVER_PORT
 
 if __name__ == "__main__":
