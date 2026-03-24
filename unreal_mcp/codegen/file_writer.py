@@ -7,12 +7,12 @@ Handles path resolution, directory creation, and backup of existing files.
 from __future__ import annotations
 from pathlib import Path
 
-from unreal_mcp.config.settings import UE_PROJECT_PATH, UE_PROJECT_NAME
+from unreal_mcp.config.settings import UE_PROJECT_ROOT, UE_PROJECT_NAME
 
 
 def _get_source_dir() -> Path:
     """Get the project's Source directory."""
-    return Path(UE_PROJECT_PATH) / "Source" / UE_PROJECT_NAME
+    return Path(UE_PROJECT_ROOT) / "Source" / UE_PROJECT_NAME
 
 
 def write_class_files(

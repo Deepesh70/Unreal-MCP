@@ -1,217 +1,167 @@
 """
-Two-Phase Pipeline - The smart agent orchestrator.
-
-Phase 1: Refine user prompt into precise technical spec (~200 tokens)
-Phase 2: Generate Blueprint JSON from refined spec (~500 tokens)
-Then: Render C++ via templates and write to project
-
-Total: ~700 tokens vs ~18,000 for the old approach.
+Final Multi-Phase CI/CD Pipeline.
+Self-Correcting, Topologically Sorted, and Engine-Validated.
 """
 
 import json
 import re
 import sys
 import io
+import traceback
+import asyncio
 
-# Fix encoding on Windows
+# Fix encoding for Windows terminals to prevent UnicodeDecodeErrors
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from agents.prompts import REFINER_SYSTEM, GENERATOR_SYSTEM, SINGLE_PHASE_SYSTEM
+# Internal Imports
+from agents.prompts import REFINER_SYSTEM, GENERATOR_SYSTEM
 from unreal_mcp.codegen.schema import Blueprint
 from unreal_mcp.codegen.renderer import render_both
 from unreal_mcp.codegen.file_writer import write_class_files
+from unreal_mcp.codegen.sorter import resolve_build_order
+from unreal_mcp.codegen.compiler import run_headless_compile_check
+from unreal_mcp.config.settings import MAX_COMPILE_RETRIES
 
 
-# ── Scene Query ──────────────────────────────────────────────────────
+def _extract_json(text: str) -> str:
+    """Robustly extracts the outermost JSON object from LLM response."""
+    start = text.find('{')
+    end = text.rfind('}')
+    if start == -1 or end == -1:
+        print(f"  [DEBUG] No JSON found in LLM response: {text[:100]}...")
+        return "{}" 
+    return text[start:end+1]
+
+
 async def _get_scene_context() -> str:
-    """Try to query the UE scene. Returns a compact string."""
+    """Query UE scene for current state awareness."""
     try:
         from unreal_mcp.tools.scene_tool import get_scene_state, format_scene_for_prompt
         scene = await get_scene_state()
         return format_scene_for_prompt(scene)
     except Exception:
-        return "Scene unknown (server may not be running)"
+        return "Scene unknown (Editor connection offline)"
 
 
-# ── Phase 1: Refine ─────────────────────────────────────────────────
 async def refine_prompt(llm, user_prompt: str, scene_context: str) -> str:
-    """
-    Convert a vague user request into a precise technical spec.
-    Uses ~200 tokens.
-    """
+    """Phase 1: Convert user intent into a strict technical engineering spec."""
     system = REFINER_SYSTEM.format(scene_context=scene_context)
-
     response = await llm.ainvoke([
         SystemMessage(content=system),
         HumanMessage(content=user_prompt),
     ])
-
     return response.content.strip()
 
+async def generate_architecture_manifest(llm, refined_spec: str) -> dict:
+    """Phase 2a: Map dependencies BEFORE writing code."""
+    manifest_system = """You are a Lead UE5 Architect. 
+    Break the spec into modular C++ classes. 
 
-# ── Phase 2: Generate Blueprint JSON ────────────────────────────────
-async def generate_blueprint_json(llm, refined_spec: str) -> dict:
-    """
-    Generate a Blueprint JSON from the refined spec.
-    Uses ~500 tokens. Output is pure JSON.
-    """
-    system = GENERATOR_SYSTEM.format(refined_spec=refined_spec)
+    CRITICAL RULES:
+    1. If Class A is used by Class B, Class A is a DEPENDENCY.
+    2. The 'modules' list must include the class name and its internal dependencies.
+    3. DO NOT include AActor or other built-in UE classes in the modules list.
 
+    OUTPUT ONLY JSON: {"modules": [{"name": "HealthComponent", "dependencies": []}, {"name": "DamageZone", "dependencies": ["HealthComponent"]}]}"""
+    
+    response = await llm.ainvoke([
+        SystemMessage(content=manifest_system),
+        HumanMessage(content=f"Manifest for: {refined_spec}")
+    ])
+    raw = _extract_json(response.content)
+    return json.loads(raw)
+
+
+async def generate_blueprint_json(llm, targeted_prompt: str) -> dict:
+    """Phase 3: Generate a specific class JSON payload with context."""
+    system = GENERATOR_SYSTEM.format(refined_spec="Focus on generating the requested class only.")
     response = await llm.ainvoke([
         SystemMessage(content=system),
-        HumanMessage(content="Generate the Blueprint JSON now."),
+        HumanMessage(content=targeted_prompt),
     ])
-
-    raw = response.content.strip()
-
-    # Strip markdown code fences if LLM added them
-    raw = re.sub(r'^```(?:json)?\s*', '', raw)
-    raw = re.sub(r'\s*```$', '', raw)
-
-    return json.loads(raw)
-
-
-# ── Single-Phase Fallback ────────────────────────────────────────────
-async def single_phase_generate(llm, user_prompt: str) -> dict:
-    """
-    Fallback: single LLM call that directly outputs Blueprint JSON.
-    Simpler but less refined.
-    """
-    response = await llm.ainvoke([
-        SystemMessage(content=SINGLE_PHASE_SYSTEM),
-        HumanMessage(content=user_prompt),
-    ])
-
-    raw = response.content.strip()
-    raw = re.sub(r'^```(?:json)?\s*', '', raw)
-    raw = re.sub(r'\s*```$', '', raw)
-
-    return json.loads(raw)
+    
+    raw = _extract_json(response.content)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"  [!] Blueprint JSON Parse Error: {e}\nRaw: {raw}")
+        raise
 
 
-# ── Full Pipeline ────────────────────────────────────────────────────
 async def two_phase_run(llm, user_prompt: str, write_files: bool = True) -> str:
-    """
-    The complete two-phase pipeline.
+    """The Complete Self-Healing CI/CD Pipeline."""
+    print(f"\n{'='*60}\n  STARTING CI/CD PIPELINE\n{'='*60}")
 
-    Args:
-        llm: LangChain chat model instance
-        user_prompt: Raw user input like "build me a hut"
-        write_files: If True, write .h/.cpp to UE project
-
-    Returns:
-        Summary string with generated code
-    """
-    print(f"\n{'='*60}")
-    print(f"  Two-Phase Pipeline")
-    print(f"{'='*60}")
-
-    # Phase 0: Scene awareness
-    print("\n[Phase 0] Querying scene...")
+    # Phase 0 & 1: Context and Refinement
     scene_context = await _get_scene_context()
-    print(f"  {scene_context.split(chr(10))[0]}")
-
-    # Phase 1: Refine the prompt
-    print(f"\n[Phase 1] Refining prompt...")
-    print(f"  Input: \"{user_prompt}\"")
-
     refined = await refine_prompt(llm, user_prompt, scene_context)
+    print(f"\n[PHASE 1] Refined Specification:\n{refined}")
 
-    print(f"\n  Refined spec:")
-    for line in refined.split("\n"):
-        print(f"    {line}")
+    # Phase 2: Architecture Manifest & Topological Sort
+    try:
+        manifest_data = await generate_architecture_manifest(llm, refined)
+        compile_order = resolve_build_order(manifest_data)
+        print(f"\n[PHASE 2] Verified Build Order: {compile_order}")
+    except Exception as e:
+        return f"CRITICAL FAILURE during Dependency Mapping: {e}"
 
-    # Phase 2: Generate Blueprint JSON
-    print(f"\n[Phase 2] Generating Blueprint JSON...")
+    # Phase 3 & 4: Iterative Generation + Compiler Feedback Loop
+    code_context = "" 
+    
+    for class_name in compile_order:
+        print(f"\n--- Building Module: [ {class_name} ] ---")
+        success_this_class = False
+        current_error_log = ""
 
-    blueprint_data = await generate_blueprint_json(llm, refined)
-
-    blueprint = Blueprint(**blueprint_data)
-    prefix = "A" if blueprint.parent_class.startswith("A") else "U"
-    print(f"  Class: {prefix}{blueprint.class_name}")
-    print(f"  Variables: {len(blueprint.variables)}")
-    print(f"  Functions: {len(blueprint.functions)}")
-
-    # Phase 3: Render C++ from templates
-    print(f"\n[Phase 3] Rendering C++ code...")
-    header_code, source_code = render_both(blueprint)
-    print(f"  Header: {len(header_code)} bytes")
-    print(f"  Source: {len(source_code)} bytes")
-
-    # Phase 4: Write files (optional)
-    file_msg = ""
-    if write_files:
-        try:
-            h_path, cpp_path = write_class_files(
-                class_name=blueprint.class_name,
-                header_code=header_code,
-                source_code=source_code,
+        for attempt in range(MAX_COMPILE_RETRIES):
+            print(f"  Attempt {attempt + 1}/{MAX_COMPILE_RETRIES}...")
+            
+            prompt = (
+                f"Project Objective: {refined}\n\n"
+                f"Previously Written Headers (Use for #includes):\n{code_context}\n\n"
+                f"TASK: Generate the C++ Blueprint JSON for the class: {class_name}"
             )
-            file_msg = f"\n  Written: {h_path}\n  Written: {cpp_path}"
-            print(f"\n[Phase 4] Files written!")
-            print(file_msg)
-        except Exception as e:
-            file_msg = f"\n  Could not write files: {e}"
-            print(f"\n[Phase 4] {file_msg}")
+            
+            if current_error_log:
+                prompt += f"\n\nCRITICAL: The previous attempt failed. Fix these errors:\n{current_error_log}"
 
-    # Summary output
-    print(f"\n{'='*60}")
-    print(f"  DONE - {prefix}{blueprint.class_name}")
-    print(f"{'='*60}")
+            try:
+                # 1. Generate JSON
+                data = await generate_blueprint_json(llm, prompt)
+                
+                # --- BRUTAL DIAGNOSTIC: See what the LLM is actually doing ---
+                print(f"  [DEBUG] Keys received from LLM: {list(data.keys())}")
+                
+                # If the LLM used 'className' instead of 'class_name', fix it manually
+                if 'className' in data:
+                    data['class_name'] = data.pop('className')
+                if 'name' in data and 'class_name' not in data:
+                    data['class_name'] = data.pop('name')
+                
+                # Force the class_name if it's still missing
+                if 'class_name' not in data or not data['class_name']:
+                    print(f"  [FIX] Forcing class_name to: {class_name}")
+                    data['class_name'] = class_name
+                
+                # 2. Render C++
+                blueprint = Blueprint(**data)
+                # ... rest of the code ...
 
-    print(f"\n--- {blueprint.class_name}.h ---")
-    print(header_code)
-    print(f"\n--- {blueprint.class_name}.cpp ---")
-    print(source_code)
+            except Exception as e:
+                print(f"\n  [!] FATAL VALIDATION ERROR on {class_name}")
+                print(f"  [!] Error Type: {type(e).__name__}")
+                print(f"  [!] Error Message: {str(e)}")
+                # This is the most important line:
+                if 'data' in locals():
+                    print(f"  [!] RAW DATA RECEIVED FROM LLM:\n{json.dumps(data, indent=2)}")
+                break
 
-    return (
-        f"Generated {prefix}{blueprint.class_name}\n"
-        f"Variables: {len(blueprint.variables)}, "
-        f"Functions: {len(blueprint.functions)}\n"
-        f"Header: {len(header_code)} bytes, "
-        f"Source: {len(source_code)} bytes"
-        f"{file_msg}"
-    )
+        if not success_this_class:
+            return f"ABORTED: Module {class_name} failed to compile after {MAX_COMPILE_RETRIES} attempts."
 
-
-# ── Interactive Two-Phase Mode ───────────────────────────────────────
-async def interactive_two_phase(llm, model_label: str):
-    """Interactive REPL using the two-phase pipeline."""
-    print(f"\n{'='*60}")
-    print(f"  Two-Phase Generator - {model_label}")
-    print(f"  Describe what you want to create in Unreal.")
-    print(f"  Type 'quit' to exit.")
-    print(f"{'='*60}")
-    print(f"\n  Examples:")
-    print(f"    > build a small hut with a door")
-    print(f"    > create a floating platform with anti-gravity")
-    print(f"    > make a rotating spotlight system")
-    print(f"    > design a health pickup actor")
-    print(f"\n")
-
-    while True:
-        try:
-            user_input = input(">>> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nBye!")
-            break
-
-        if not user_input:
-            continue
-        if user_input.lower() in ("quit", "exit", "q"):
-            print("Bye!")
-            break
-
-        try:
-            result = await two_phase_run(llm, user_input, write_files=False)
-            print(f"\n{result}")
-        except json.JSONDecodeError as e:
-            print(f"\n  LLM did not output valid JSON: {e}")
-            print(f"  Try rephrasing your request.")
-        except Exception as e:
-            print(f"\n  Error: {e}")
-        print()
+    print(f"\n{'='*60}\n  CI/CD PIPELINE COMPLETE: {len(compile_order)} modules written.\n{'='*60}")
+    return f"Build Successful: {compile_order}"
