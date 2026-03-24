@@ -1,281 +1,382 @@
 # Unreal MCP Agent
 
-**Unreal Engine + Large Language Models (LLMs) + RAG**
+Unreal MCP Agent connects Unreal Engine Remote Control to LLM-driven automation.
 
-This project connects Unreal Engine to LLMs (Groq, Ollama, Gemini) to enable:
-- 🏗️ **Live Building**: Generate and spawn actors in real-time
-- 🧠 **RAG**: Retrieve architectural blueprints from a vector database
-- 💬 **Chat**: Interactive conversation with the engine
-- 💻 **Code Gen**: Generate C++ classes for new actors
+It supports:
+- Live scene building from natural language.
+- Scene-aware planning with optional RAG blueprint retrieval.
+- Tool-calling agent mode for direct Unreal operations.
+- Two-phase C++ class generation for Unreal projects.
+- Mesh settings discovery, validation, read, write, and sync operations.
 
-## 🚀 Quick Start
+This README is a full, current reference for the repository state.
 
-### 1. Start the MCP Server
+## 1. What This Project Does
 
-```bash
-python server.py
-```
+At runtime, the system exposes an MCP server (`UnrealMCP`) with tools that can:
+- Spawn actors and basic shapes in Unreal.
+- List existing actors and their full object paths.
+- Move, rotate, and scale actors.
+- Query scene context and recommend safe build offsets.
+- Generate and preview Unreal C++ classes from structured JSON blueprints.
+- Inspect source files and supported C++ generation types.
+- Manage mesh properties for specific mesh components with discovery and validation.
 
-Press `Enter` to accept the default port (8000).
+On the agent side, there are multiple workflows:
+- Classic tool-calling mode (`agents/base.py`).
+- Live builder pipeline (`agents/builder.py`) for scene construction.
+- Two-phase codegen pipeline (`agents/pipeline.py`) for C++ classes.
 
-### 2. Start the Agent
+## 2. Current Architecture
 
-**Option A: Interactive Builder (Recommended)**
-```bash
-python agent.py groq --build -i
-```
+### 2.1 High-Level Flow
 
-**Option B: Quick Test**
-```bash
-python agent.py groq --test
-```
+1. User runs `agent.py` with a backend (`groq`, `ollama`, or `gemini`).
+2. Agent connects to MCP server (`server.py`) via SSE.
+3. MCP server exposes tools from `unreal_mcp/tools/*`.
+4. Tools call Unreal through Remote Control WebSocket transport in `unreal_mcp/connection/websocket.py`.
+5. Unreal executes object calls/property operations and returns responses.
 
-**Option C: C++ Code Generator**
-```bash
-python agent.py groq --two-phase
-```
+### 2.2 Runtime Layers
 
-## 🛠️ Installation
+- Entry points:
+  - `server.py`: starts FastMCP server.
+  - `agent.py`: CLI launcher and mode selection.
+- Agent workflows:
+  - `agents/base.py`
+  - `agents/builder.py`
+  - `agents/pipeline.py`
+- MCP package:
+  - `unreal_mcp/__init__.py` (creates shared FastMCP instance)
+  - `unreal_mcp/tools/*` (tool registration and tool logic)
+  - `unreal_mcp/connection/*` (UE transport)
+  - `unreal_mcp/config/settings.py` (host, port, UE path, WS URL)
+- Codegen:
+  - `unreal_mcp/codegen/*`
+- Mappings:
+  - `unreal_mcp/mappings/assets.py`
+  - `unreal_mcp/mappings/classes.py`
 
-### Prerequisites
+## 3. Repository Structure
+
+Top-level important files and folders:
+
+- `agent.py`: CLI launcher for all agent modes.
+- `server.py`: FastMCP server launcher.
+- `api_server.py`: FastAPI websocket bridge for external clients.
+- `requirements.txt`: Python dependencies.
+- `.env.example`: environment variable template.
+- `agents/`: orchestration logic and LLM adapters.
+- `unreal_mcp/`: MCP package and tools.
+- `data/blueprints/`: markdown blueprint documents for RAG.
+- `data/chroma_db/`: persisted Chroma vectorstore.
+- `docs/`: internal developer docs.
+
+## 4. Prerequisites
 
 - Python 3.8+
-- Unreal Engine 5.1+
-- Unreal MCP Plugin (installed in your project)
+- Unreal Engine with Remote Control plugin available
+- Remote Control Web Interface running in editor
+- Network access to UE Remote Control websocket endpoint
 
-### Install Dependencies
+## 5. Installation
+
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Install ChromaDB (for RAG)
+Core dependencies include:
+- `fastmcp`
+- `websockets`
+- `langchain` and adapters
+- `langchain_groq`, `langchain_ollama`, `langchain_google_genai`
+- `langchain_chroma`, `langchain_huggingface`
+- `python-dotenv`
+
+## 6. Configuration
+
+### 6.1 Environment Variables (`.env`)
+
+Copy `.env.example` to `.env` and set only the provider keys you use.
+
+Typical variables:
+- `GROQ_API_KEY`
+- `GOOGLE_API_KEY`
+- `OLLAMA_BASE_URL` (optional, defaults to localhost)
+
+Builder token optimization variables:
+- `BUILD_TOKEN_MODE` = `low` | `balanced` | `high`
+- `BUILD_ENABLE_PLAN_REVIEW` = `true`/`false`
+- `BUILD_ENABLE_JSON_REPAIR` = `true`/`false`
+- `BUILD_MAX_SCENE_CONTEXT_CHARS` = integer
+- `BUILD_MAX_BLUEPRINT_CONTEXT_CHARS` = integer
+
+### 6.2 Static Settings (`unreal_mcp/config/settings.py`)
+
+Adjust as needed:
+- `UE_WS_URL` (default `ws://127.0.0.1:30020`)
+- `SERVER_HOST`, `SERVER_PORT`
+- `UE_PROJECT_PATH`, `UE_PROJECT_NAME`
+
+## 7. Running the System
+
+### 7.1 Start MCP Server
 
 ```bash
-pip install chromadb
+python server.py
 ```
 
-## 📂 Project Structure
+### 7.2 Start Agent
 
-```
-unreal-mcp/
-├── server.py              # MCP Server
-├── agent.py               # Main agent launcher
-├── agents/
-│   ├── base.py            # Classic tool-calling agent
-│   ├── builder.py         # Live builder (Phase 1-3)
-│   ├── builder_prompts.py # Prompt templates
-│   ├── pipeline.py        # Two-phase C++ generator
-│   ├── groq_agent.py      # Groq LLM integration
-│   ├── ollama_agent.py    # Ollama LLM integration
-│   ├── gemini_agent.py    # Gemini LLM integration
-│   └── rag/               # RAG components
-│       ├── store.py       # Vector database operations
-│       └── prompts.py     # RAG prompts
-├── blueprints/            # Architectural blueprints
-├── data/                  # Generated data
-└── docs/                  # Documentation
-```
-
-## 🏗️ Live Builder Workflow
-
-```
-User Prompt → [Phase 1: Refine] → [Phase 0.5: RAG] → [Phase 2: Plan] → [Phase 3: Build]
-```
-
-### Phase 0.5: RAG Retrieval
-
-1. User asks for a specific building type (e.g., "Victorian house")
-2. RAG system searches `blueprints/` for similar documents
-3. Relevant blueprints are injected into the LLM context
-4. LLM uses blueprints to generate accurate, detailed plans
-
-### Phase 1: Refine Prompt
-
-- Converts vague requests into precise specifications
-- Extracts key details: shape, size, position, rotation
-- Resolves ambiguities
-
-### Phase 2: Generate Build Plan
-
-- Creates JSON with `steps` array
-- Each step has: `action`, `label`, `params`
-- Supports `spawn`, `scale`, `rotate` actions
-
-### Phase 3: Execute in UE
-
-- Connects to Unreal Engine via WebSocket
-- Spawns actors using `spawn_actor_internal`
-- Applies transformations
-- Provides real-time feedback
-
-## 💬 Interactive Mode
+Interactive live builder:
 
 ```bash
-python agent.py groq --build -i
+python agent.py groq -b -i
 ```
 
-### Conversation Flow
+Other modes:
 
-```
-User: Build a small hut
-
-[Phase 1] Planning build...
-  Input: "Build a small hut"
-  [+] Found RAG Blueprint match! Injecting into context.
-  Name: Hut
-  Steps: 4
-
-[Phase 3] BUILDING IN UNREAL ENGINE...
-  [1/4] Spawned cube -> step_0
-  [2/4] Spawned cube -> step_1
-  [3/4] Spawned cube -> step_2
-  [4/4] Spawned cube -> step_3
-
-============================================================
-  BUILD COMPLETE!
-  Executed 4/4 steps (0 errors)
-  Look at your Unreal viewport!
-============================================================
-
-User: Make it bigger
-
-[Phase 1] Planning build...
-  Input: "Make it bigger"
-  [+] Found RAG Blueprint match! Injecting into context.
-  Name: Hut
-  Steps: 1
-
-[Phase 3] BUILDING IN UNREAL ENGINE...
-  [1/1] Scaled step_0 -> (2.0, 2.0, 2.0)
-
-============================================================
-  BUILD COMPLETE!
-  Executed 1/1 steps (0 errors)
-  Look at your Unreal viewport!
-============================================================
+```bash
+python agent.py groq --test
+python agent.py groq --two-phase
+python agent.py ollama -b -i
+python agent.py gemini -b -i
 ```
 
-## 💻 C++ Code Generation
+## 8. Agent Modes
+
+### 8.1 Classic Tool-Calling Mode
+
+File: `agents/base.py`
+
+Behavior:
+- Connects to SSE MCP endpoint at `http://localhost:8000/sse`.
+- Loads all FastMCP tools.
+- Executes user requests via LangChain agent.
+
+### 8.2 Live Builder Mode
+
+File: `agents/builder.py`
+
+Pipeline phases:
+1. Phase 0: scene query + safe-offset context.
+2. Phase 0.5: optional blueprint retrieval from RAG store.
+3. Phase 1: prompt refinement.
+4. Phase 2: build-plan JSON generation.
+5. Phase 2b: optional geometry review/refinement pass.
+6. Phase 3: execute plan step-by-step in Unreal.
+
+Key reliability features:
+- Token policy modes (`low`/`balanced`/`high`).
+- Context truncation for token control.
+- JSON extraction + cleanup.
+- Optional JSON repair LLM pass.
+- Plan sanitization (`spawn`, `scale`, `rotate`, `mesh_settings`, `sync_mesh_settings`).
+- Dropped invalid step reporting.
+
+Token accounting:
+- Per-phase token logging:
+  - Phase 1 Refine
+  - Phase 2 Plan
+  - Phase 2 Review (if enabled)
+  - Phase 2 Repair (if triggered)
+- Overall token totals at build completion.
+
+### 8.3 Two-Phase Codegen Mode
+
+File: `agents/pipeline.py`
+
+Flow:
+1. Refine request into technical specification.
+2. Generate Blueprint JSON.
+3. Render `.h/.cpp` from templates.
+4. Optionally write files to Unreal project source path.
+
+## 9. MCP Tools (Current)
+
+Registered through `unreal_mcp/tools/__init__.py`.
+
+### 9.1 Actor/Scene Tools
+
+- `list_actors()`
+  - Lists actor names and object paths.
+- `get_scene_summary()`
+  - Summarizes current scene and provides safe build origin guidance.
+
+### 9.2 Spawn/Transform Tools
+
+- `spawn_actor(actor_class_or_asset, x, y, z)`
+- `set_actor_scale(actor_path, scale_x, scale_y, scale_z)`
+- `set_actor_rotation(actor_path, pitch, yaw, roll)`
+- `set_actor_location(actor_path, x, y, z)`
+
+Supported basic shapes (asset map):
+- `cube`, `sphere`, `cylinder`, `cone`, `plane`
+
+Supported mapped classes (class map):
+- `pointlight`, `spotlight`, `directional_light`
+
+### 9.3 Mesh Settings Tools
+
+File: `unreal_mcp/tools/mesh_settings.py`
+
+- `list_mesh_settings(actor_or_mesh_path, contains="", limit=120)`
+  - Discover available property names.
+- `validate_mesh_settings(actor_or_mesh_path, setting_names)`
+  - Validate names and suggest close matches.
+- `read_mesh_settings(actor_or_mesh_path, setting_names)`
+  - Read current values.
+- `set_mesh_settings(actor_or_mesh_path, settings)`
+  - Write one or many properties.
+- `sync_mesh_settings(actor_or_mesh_path, desired_settings)`
+  - Read current values and write only changed ones.
+
+Path resolution behavior:
+- Tries provided path first, then common mesh component suffixes:
+  - `.StaticMeshComponent0`
+  - `.StaticMeshComponent`
+  - `.Mesh`
+
+### 9.4 Project/Codegen Tools
+
+- `get_project_info()`
+- `list_project_files()`
+- `list_supported_types()`
+- `generate_ue_class(blueprint_json)`
+- `preview_ue_class(blueprint_json)`
+
+## 10. Unreal Transport API
+
+File: `unreal_mcp/connection/websocket.py`
+
+Functions:
+- `send_ue_ws_http_request(url, verb="PUT", body=None)`
+- `send_ue_ws_command(object_path, function_name, parameters=None)`
+- `send_ue_ws_property_update(object_path, property_name, property_value)`
+- `send_ue_ws_property_read(object_path, property_name)`
+- `send_ue_ws_object_describe(object_path)`
+
+`send_ue_ws_object_describe` tries multiple endpoints for compatibility:
+- `/remote/object/describe`
+- `/remote/object`
+- `/remote/object/metadata`
+
+## 11. RAG Blueprint Retrieval
+
+File: `agents/rag_store.py`
+
+Behavior:
+- Loads markdown files from `data/blueprints/*.md`.
+- Embeds text with `all-MiniLM-L6-v2`.
+- Stores/reloads vectors in Chroma at `data/chroma_db`.
+- Retrieves top semantic match with relevance check before injection.
+
+## 12. Prompting Guidelines for Better Builds
+
+For reliable geometry:
+- Use two-pass prompting:
+  - Pass 1: structural shell (floor/walls/openings).
+  - Pass 2: roof/details/decor.
+- Keep each pass bounded (for example, under 30-40 steps).
+- Use explicit numeric coordinates and labels.
+- Keep roof instructions deterministic with fixed rotations and centers.
+
+For lower token usage:
+- Set `BUILD_TOKEN_MODE=low`.
+- Disable review for draft runs.
+- Re-enable review for final quality runs.
+
+## 13. Troubleshooting
+
+### 13.1 `python agent.py ... -b -i` exits with error
+
+Check:
+- MCP server is running on expected host/port.
+- Correct Python environment has all requirements installed.
+- LLM API key for selected provider is configured.
+
+### 13.2 Build output has detached roofs or bad openings
+
+Common causes:
+- Center-pivot rotation not compensated.
+- Overly long prompt leading to malformed/approximate coordinates.
+- Review pass disabled in low token mode.
+
+Actions:
+- Use deterministic two-pass prompts.
+- Keep `BUILD_ENABLE_PLAN_REVIEW=true` for final builds.
+- Keep JSON repair enabled.
+
+### 13.3 JSON decode failures in Phase 2
+
+The pipeline includes:
+- JSON extraction/cleanup.
+- Optional auto-repair pass.
+
+If still failing:
+- Reduce prompt complexity.
+- Split build into multiple prompts.
+
+### 13.4 No actors or mesh paths resolve
+
+Check:
+- Unreal editor running with Remote Control enabled.
+- Correct object path from `list_actors`.
+- Mesh settings tool path fallback may still fail for custom component names.
+
+## 14. Development Notes
+
+- Add new MCP tools in `unreal_mcp/tools/` and import them in `unreal_mcp/tools/__init__.py`.
+- Keep all UE websocket logic in `unreal_mcp/connection/websocket.py`.
+- Prefer explicit schema validation and sanitization before executing LLM outputs.
+
+Useful docs:
+- `docs/ADDING_TOOLS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/AGENTS.md`
+- `docs/CODEGEN.md`
+
+## 15. Security and Secrets
+
+- Never commit real API keys to version control.
+- Keep `.env` private.
+- Use `.env.example` as the public template.
+
+## 16. Quick Command Reference
+
+Start server:
+
+```bash
+python server.py
+```
+
+Run live builder (Groq):
+
+```bash
+python agent.py groq -b -i
+```
+
+Run tool-calling test:
+
+```bash
+python agent.py groq --test
+```
+
+Run two-phase codegen:
 
 ```bash
 python agent.py groq --two-phase
 ```
 
-### Workflow
+## 17. Current Status Summary
 
-1. **Refine**: User prompt → detailed spec
-2. **Generate**: LLM creates C++ header + source files
-3. **Output**: Files saved to `data/generated/`
+This repository currently includes:
+- Multi-backend LLM integration.
+- Live Unreal build pipeline with token-aware controls.
+- Robust JSON handling and optional review/repair passes.
+- Mesh settings introspection and diff-based sync.
+- Code generation pipeline for Unreal C++ classes.
+- RAG-assisted architectural prompting from local blueprint docs.
 
-### Example Output
-
-```cpp
-// data/generated/MyActor.h
-#include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
-#include "MyActor.generated.h"
-
-UCLASS()
-class PROJECT_API AMyActor : public AActor
-{
-    GENERATED_BODY()
-
-public:
-    AMyActor();
-
-protected:
-    virtual void BeginPlay() override;
-
-public:
-    virtual void Tick(float DeltaTime) override;
-};
-
-// data/generated/MyActor.cpp
-#include "MyActor.h"
-
-AMyActor::AMyActor()
-{
-    PrimaryActorTick.bCanEverTick = true;
-}
-
-void AMyActor::BeginPlay()
-{
-    Super::BeginPlay();
-}
-
-void AMyActor::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
-}
-```
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-```bash
-export GROQ_API_KEY="your-groq-api-key"
-export GEMINI_API_KEY="your-gemini-api-key"
-export OLLAMA_BASE_URL="http://localhost:11434"
-```
-
-### Model Selection
-
-```bash
-# Groq (default)
-python agent.py groq ...
-
-# Ollama
-python agent.py ollama ...
-
-# Gemini
-python agent.py gemini ...
-```
-
-## 📂 Blueprint Management
-
-### Add Blueprints
-
-1. Create Markdown files in `blueprints/`:
-
-```markdown
-# blueprints/victorian_house.md
-
-## Architecture: Victorian House
-
-**Style**: Victorian
-**Rooms**: 4 bedrooms, 2 bathrooms, kitchen, living room
-**Materials**: Brick exterior, wood floors, plaster walls
-**Key Features**:
-- Turret on the west side
-- Wrap-around porch
-- Decorative trim
-- Steeply pitched roof
-
-## Dimensions
-
-- **Footprint**: 15m x 20m
-- **Height**: 3 stories
-- **Ceiling height**: 3m
-
-## Room Layout
-
-**Ground Floor**:
-- Foyer (3m x 4m)
-- Living room (5m x 6m)
-- Dining room (4m x 5m)
-- Kitchen (4m x 5m)
-- Stairs (2m x 3m)
-
-**Second Floor**:
-- Master bedroom (5m x 6m)
-- Bedroom 2 (4m x 5m)
-- Bedroom 3 (4m x 5m)
-- Bathroom 1 (3m x 4m)
-- Hallway (2m x 6m)
-
-**Third Floor**:
-- Bedroom 4 (5m x 6m)
-- Bathroom 2 (3m x 4m)
--
