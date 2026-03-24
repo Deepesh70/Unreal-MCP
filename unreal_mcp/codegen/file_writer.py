@@ -53,6 +53,8 @@ def write_class_files(
     for path in [header_path, source_path]:
         if path.exists():
             backup = path.with_suffix(path.suffix + ".bak")
+            if backup.exists():
+                backup.unlink()
             path.rename(backup)
 
     # Write new files
