@@ -8,26 +8,23 @@ of managing sockets directly.
 
 import json
 import websockets
+from typing import Any, Dict, Optional
 
 from unreal_mcp.config.settings import UE_WS_URL
 
 
-async def send_ue_ws_command(
-    object_path: str,
-    function_name: str,
-    parameters: dict = None,
+async def send_ue_ws_http_request(
+    url: str,
+    verb: str = "PUT",
+    body: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """
-    Send a remote-control command to Unreal Engine via WebSocket.
-
-    Wraps the standard Remote Control HTTP payload into the format
-    Unreal's WebSocket server expects, opens a transient connection,
-    and returns the parsed JSON response.
+    Send a generic Unreal Remote Control HTTP-over-WebSocket request.
 
     Args:
-        object_path:   The UObject path to call the function on.
-        function_name: The name of the UFunction to invoke.
-        parameters:    Optional dict of function parameters.
+        url:  Remote Control endpoint path (for example /remote/object/call).
+        verb: HTTP verb (for example PUT, GET).
+        body: JSON body for the endpoint.
 
     Returns:
         The full parsed JSON response from Unreal Engine.
@@ -38,28 +35,19 @@ async def send_ue_ws_command(
     payload = {
         "MessageName": "http",
         "Parameters": {
-            "Url": "/remote/object/call",
-            "Verb": "PUT",
-            "Body": {
-                "objectPath": object_path,
-                "functionName": function_name,
-            },
+            "Url": url,
+            "Verb": verb,
+            "Body": body or {},
         },
     }
-
-    # Inject parameters into the Body if they exist
-    if parameters:
-        payload["Parameters"]["Body"]["parameters"] = parameters
 
     try:
         async with websockets.connect(UE_WS_URL) as ws:
             await ws.send(json.dumps(payload))
 
-            # Wait for Unreal's real-time response
             response_str = await ws.recv()
             response_data = json.loads(response_str)
 
-            # Check if Unreal threw an internal error
             error_msg = response_data.get("ResponseBody", {}).get("ErrorMessage")
             if error_msg:
                 raise Exception(error_msg)
@@ -68,3 +56,84 @@ async def send_ue_ws_command(
 
     except Exception as e:
         raise Exception(f"WebSocket Error: {str(e)}")
+
+
+async def send_ue_ws_command(
+    object_path: str,
+    function_name: str,
+    parameters: dict = None,
+) -> dict:
+    """
+    Send a remote-control command to Unreal Engine via WebSocket.
+    """
+    body = {
+        "objectPath": object_path,
+        "functionName": function_name,
+    }
+
+    if parameters:
+        body["parameters"] = parameters
+
+    return await send_ue_ws_http_request(
+        url="/remote/object/call",
+        verb="PUT",
+        body=body,
+    )
+
+
+async def send_ue_ws_property_update(
+    object_path: str,
+    property_name: str,
+    property_value,
+) -> dict:
+    """
+    Set a UObject property via Unreal Remote Control WebSocket.
+    """
+    return await send_ue_ws_http_request(
+        url="/remote/object/property",
+        verb="PUT",
+        body={
+            "objectPath": object_path,
+            "propertyName": property_name,
+            "access": "WRITE_ACCESS",
+            "propertyValue": property_value,
+        },
+    )
+
+
+async def send_ue_ws_property_read(
+    object_path: str,
+    property_name: str,
+) -> dict:
+    """
+    Read a UObject property via Unreal Remote Control WebSocket.
+    """
+    return await send_ue_ws_http_request(
+        url="/remote/object/property",
+        verb="PUT",
+        body={
+            "objectPath": object_path,
+            "propertyName": property_name,
+            "access": "READ_ACCESS",
+        },
+    )
+
+
+async def send_ue_ws_object_describe(object_path: str) -> dict:
+    """
+    Describe a UObject so tools can discover callable functions/properties.
+
+    Unreal endpoints can vary by version/plugin, so try common options.
+    """
+    last_error = None
+    for endpoint in ("/remote/object/describe", "/remote/object", "/remote/object/metadata"):
+        try:
+            return await send_ue_ws_http_request(
+                url=endpoint,
+                verb="PUT",
+                body={"objectPath": object_path},
+            )
+        except Exception as e:
+            last_error = e
+
+    raise Exception(f"Could not describe object '{object_path}': {last_error}")
