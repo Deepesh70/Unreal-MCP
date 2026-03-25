@@ -118,7 +118,10 @@ Builder token optimization variables:
 Adjust as needed:
 - `UE_WS_URL` (default `ws://127.0.0.1:30020`)
 - `SERVER_HOST`, `SERVER_PORT`
-- `UE_PROJECT_PATH`, `UE_PROJECT_NAME`
+- `UE_PROJECT_ROOT`, `UE_PROJECT_NAME`, `UE_PROJECT_FILE_PATH`
+- `UE_ENGINE_PATH`, `UE_BATCH_FILES_PATH`
+- `UE_MODULE_NAME`, `UE_EXPORT_MACRO`, `UE_ENGINE_VERSION`
+- `MAX_COMPILE_RETRIES`
 
 ## 7. Running the System
 
@@ -141,6 +144,7 @@ Other modes:
 ```bash
 python agent.py groq --test
 python agent.py groq --two-phase
+python agent.py groq --two-phase --dry-run
 python agent.py ollama -b -i
 python agent.py gemini -b -i
 ```
@@ -189,10 +193,16 @@ Token accounting:
 File: `agents/pipeline.py`
 
 Flow:
-1. Refine request into technical specification.
-2. Generate Blueprint JSON.
-3. Render `.h/.cpp` from templates.
-4. Optionally write files to Unreal project source path.
+1. Run compile preflight checks (only when writing files).
+2. Refine request into a technical specification with scene context.
+3. Build architecture manifest and resolve topological compile order.
+4. Generate per-module Blueprint JSON payloads.
+5. Validate schema, render `.h/.cpp`, and write source files.
+6. Run headless compile checks and retry failed modules with compiler feedback.
+
+Notes:
+- Default two-phase mode writes files and runs compile checks.
+- Use `--dry-run` to preview generation without writing/compiling.
 
 ## 9. MCP Tools (Current)
 
@@ -368,6 +378,12 @@ Run two-phase codegen:
 
 ```bash
 python agent.py groq --two-phase
+```
+
+Run two-phase codegen (dry run):
+
+```bash
+python agent.py groq --two-phase --dry-run
 ```
 
 ## 17. Current Status Summary

@@ -42,18 +42,22 @@ def print_usage():
 
   Modes:
     --build / -b       LIVE BUILDER: spawns objects in UE via WebSocket!
-    --two-phase / -2   C++ class generator (writes .h/.cpp files)
+        --two-phase / -2   C++ class generator (writes + compile checks)
     --test             Quick test (1 API call)
     (default)          Classic tool-calling agent
 
   Options:
     --interactive / -i  Interactive chat mode
     --prompt "..."      Custom prompt
+        --dry-run           Two-phase preview only (no file writes, no compile)
+        --level "..."       Target level hint for --build mode prompts
 
   Examples:
     python agent.py groq -b -i              # Interactive builder (BEST)
     python agent.py groq -b --prompt "build a hut"
-    python agent.py groq -2 -i              # C++ code generator
+        python agent.py groq -b --level "/Game/Maps/TestMap" --prompt "spawn 3 cubes"
+        python agent.py groq -2 -i              # C++ generator with compile checks
+        python agent.py groq -2 --dry-run --prompt "Create WeatherController actor"
     python agent.py groq --test             # Quick test
 
 ==============================================================
@@ -65,6 +69,8 @@ def parse_options():
     interactive = "--interactive" in sys.argv or "-i" in sys.argv
     two_phase = "--two-phase" in sys.argv or "-2" in sys.argv
     build_mode = "--build" in sys.argv or "-b" in sys.argv
+    dry_run = "--dry-run" in sys.argv
+    level = None
     prompt = None
 
     if "--prompt" in sys.argv:
@@ -72,7 +78,20 @@ def parse_options():
         if idx + 1 < len(sys.argv):
             prompt = sys.argv[idx + 1]
 
-    return test_mode, interactive, two_phase, build_mode, prompt
+    if "--level" in sys.argv:
+        idx = sys.argv.index("--level")
+        if idx + 1 < len(sys.argv):
+            level = sys.argv[idx + 1]
+
+    return test_mode, interactive, two_phase, build_mode, dry_run, level, prompt
+
+
+def _require_prompt(mode_name: str, prompt: str | None) -> bool:
+    """Return False and show guidance when prompt is required but missing."""
+    if prompt:
+        return True
+    print(f"Please provide a prompt for {mode_name} mode using --prompt \"...\".")
+    return False
 
 
 async def main():
@@ -81,7 +100,7 @@ async def main():
         sys.exit(1)
 
     backend = sys.argv[1].lower()
-    test_mode, interactive, two_phase, build_mode, custom_prompt = parse_options()
+    test_mode, interactive, two_phase, build_mode, dry_run, level, custom_prompt = parse_options()
 
     # ── Create LLM ──────────────────────────────────────────────
     if backend == "groq":
@@ -110,22 +129,38 @@ async def main():
 
         if interactive:
             await interactive_builder(llm, label)
-        elif custom_prompt:
-            await build_in_ue(llm, custom_prompt)
         else:
-            await build_in_ue(llm, "build a small hut with walls, a roof, and a door")
+            if not _require_prompt("build", custom_prompt):
+                print_usage()
+                sys.exit(1)
+
+            prompt_for_build = custom_prompt
+            if level:
+                prompt_for_build = (
+                    f"Target Unreal level: {level}. If this level is not currently open, ask to open it first.\n"
+                    f"Task: {custom_prompt}"
+                )
+
+            await build_in_ue(llm, prompt_for_build)
         return
 
     # ── C++ Code Generation Mode ────────────────────────────────
     if two_phase:
         from agents.pipeline import two_phase_run, interactive_two_phase
+        write_files = not dry_run
+
+        if level:
+            print("Note: --level is ignored in --two-phase mode (C++ class generation is not level-specific).")
 
         if interactive:
-            await interactive_two_phase(llm, label)
-        elif custom_prompt:
-            await two_phase_run(llm, custom_prompt, write_files=False)
+            await interactive_two_phase(llm, label, write_files=write_files)
         else:
-            await two_phase_run(llm, "Create a hut actor", write_files=False)
+            if not _require_prompt("two-phase", custom_prompt):
+                print_usage()
+                sys.exit(1)
+
+            result = await two_phase_run(llm, custom_prompt, write_files=write_files)
+            print(f"\n[RESULT] {result}")
         return
 
     # ── Classic Tool-Calling Mode ───────────────────────────────
@@ -136,6 +171,10 @@ async def main():
         interactive = False
     else:
         prompt = custom_prompt
+
+    if not interactive and not test_mode and not _require_prompt("classic", prompt):
+        print_usage()
+        sys.exit(1)
 
     await run_agent(llm, model_label=label, prompt=prompt, interactive=interactive)
 

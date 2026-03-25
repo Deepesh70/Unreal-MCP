@@ -3,8 +3,8 @@
 ## Overview
 
 The structured code generation system lets the LLM generate UE C++ classes
-without writing raw C++. The LLM outputs a JSON Blueprint, and the server
-renders it through Jinja2 templates into proper .h/.cpp files.
+without writing raw C++. The LLM outputs Blueprint JSON payloads and the server
+validates, renders, writes, and compile-checks generated code.
 
 ## Flow
 
@@ -12,16 +12,27 @@ renders it through Jinja2 templates into proper .h/.cpp files.
 User: "Create a dynamic weather system"
   |
   v
-LLM outputs structured JSON:        <-- ~80% fewer tokens
-  { class_name, variables, functions }
+Phase 0: optional compile preflight checks
+  - validate Build.bat path, .uproject path, source folder
+  - verify Unreal Editor is closed for headless compile
+  - detect live coding patch artifacts
   |
   v
-codegen/schema.py validates it       <-- Zero hallucinations
+Phase 1: refine request with scene context
+  |
+  v
+Phase 2: architecture manifest
+  { modules: [{name, dependencies}] }
+  |
+  v
+codegen/sorter.py resolves topological compile order
+  |
+  v
+Phase 3: per-module Blueprint JSON generation (with retry feedback)
+  |
+  v
+codegen/schema.py validates payloads
   (Pydantic: Blueprint, Variable, Function)
-  |
-  v
-codegen/type_mapper.py resolves types
-  float -> float, vector -> FVector
   |
   v
 codegen/renderer.py renders via Jinja2
@@ -32,6 +43,20 @@ codegen/renderer.py renders via Jinja2
 codegen/file_writer.py writes to
   Source/ProjectName/ClassName.h
   Source/ProjectName/ClassName.cpp
+  |
+  v
+codegen/compiler.py runs headless compile check
+  - on failure: feed compiler errors back into next retry
+```
+
+## CLI Modes
+
+```bash
+# Default two-phase mode: write + compile validate
+python agent.py groq --two-phase
+
+# Dry run: no file writes and no compile checks
+python agent.py groq --two-phase --dry-run
 ```
 
 ## MCP Tools
@@ -43,6 +68,10 @@ codegen/file_writer.py writes to
 | `get_project_info` | Show configured project name and path |
 | `list_project_files` | List .h/.cpp in project Source/ |
 | `list_supported_types` | Show all 40+ friendly type mappings |
+
+Note:
+- `generate_ue_class` is a direct JSON->render/write tool.
+- The full multi-phase CI/CD loop is implemented in `agents/pipeline.py`.
 
 ## Blueprint JSON Format
 
@@ -81,8 +110,16 @@ codegen/file_writer.py writes to
 
 ## Setup
 
-Update your project path in `unreal_mcp/config/settings.py`:
+Update project/build settings in `unreal_mcp/config/settings.py`:
 ```python
-UE_PROJECT_PATH = "C:/Users/You/Documents/Unreal Projects/YourProject"
+UE_PROJECT_ROOT = r"C:\Projects\YourProject"
 UE_PROJECT_NAME = "YourProject"
+UE_PROJECT_FILE_PATH = os.path.join(UE_PROJECT_ROOT, f"{UE_PROJECT_NAME}.uproject")
+UE_ENGINE_PATH = r"D:\Epic\UE_5.6"
+UE_BATCH_FILES_PATH = os.path.join(UE_ENGINE_PATH, r"Engine\Build\BatchFiles\Build.bat")
+
+UE_MODULE_NAME = "YourProject"
+UE_EXPORT_MACRO = "YOURPROJECT_API"
+UE_ENGINE_VERSION = "5.6"
+MAX_COMPILE_RETRIES = 3
 ```

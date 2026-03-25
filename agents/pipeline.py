@@ -78,7 +78,12 @@ async def generate_architecture_manifest(llm, refined_spec: str) -> dict:
 
 async def generate_blueprint_json(llm, targeted_prompt: str) -> dict:
     """Phase 3: Generate a specific class JSON payload with context."""
-    system = GENERATOR_SYSTEM.format(refined_spec="Focus on generating the requested class only.")
+    # Use explicit replacement instead of str.format() because the prompt
+    # intentionally contains literal braces like {class_name} for instruction text.
+    system = GENERATOR_SYSTEM.replace(
+        "{refined_spec}",
+        "Focus on generating the requested class only.",
+    )
     response = await llm.ainvoke([
         SystemMessage(content=system),
         HumanMessage(content=targeted_prompt),
