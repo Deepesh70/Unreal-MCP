@@ -47,7 +47,7 @@ CRITICAL C++ SYNTAX RULES:
 6. NULLPTR: NEVER use 'None' or 'null' as a default value. If a pointer needs a default, use "nullptr".
 7. COMPONENTS: If you add a Component variable, you MUST instantiate it inside the "constructor_body" using CreateDefaultSubobject<T>(TEXT("Name")). Do not do this in BeginPlay.
 8. NO ASSET INCLUDES: DO NOT hallucinate headers for meshes or shapes (e.g., NEVER include "Cube.h" or "BasicShapes.h"). To use a 3D mesh, include ONLY "Components/StaticMeshComponent.h" and use a UStaticMeshComponent pointer. The actual mesh asset is assigned in the Editor, not via C++ includes.
-
+9. COMPONENT INCLUDES: Standard Unreal Engine components (StaticMeshComponent, PointLightComponent, BoxComponent, etc.) are ALWAYS located in the "Components/" directory. You MUST include them exactly like this: #include "Components/PointLightComponent.h". NEVER guess folders like "Lighting/" or "BasicShapes/".
 
 SCHEMA:
 {{

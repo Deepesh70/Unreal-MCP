@@ -62,10 +62,11 @@ async def generate_architecture_manifest(llm, refined_spec: str) -> dict:
     Break the spec into modular C++ classes. 
 
     CRITICAL RULES:
-    1. If Class A is used by Class B, Class A is a DEPENDENCY.
-    2. The 'modules' list must include the class name and its internal dependencies.
-    3. DO NOT include AActor or other built-in UE classes in the modules list.
-
+    1. ONLY generate modules for the explicitly requested classes in the spec. 
+    2. DO NOT invent 'Managers', 'Controllers', or auxiliary helper classes. Keep it simple.
+    3. If Class A is used by Class B, Class A is a DEPENDENCY.
+    4. DO NOT include AActor or other built-in UE classes in the modules list.
+    
     OUTPUT ONLY JSON: {"modules": [{"name": "HealthComponent", "dependencies": []}, {"name": "DamageZone", "dependencies": ["HealthComponent"]}]}"""
     
     response = await llm.ainvoke([
