@@ -5,6 +5,8 @@ All configurable values live here so they can be changed in one place
 without touching any tool or connection logic.
 """
 
+import os
+
 # ── WebSocket Connection ──────────────────────────────────────────────
 # The WebSocket URL that Unreal Engine's Remote Control plugin exposes.
 UE_WS_URL = "ws://127.0.0.1:30020"
@@ -14,3 +16,11 @@ UE_WS_URL = "ws://127.0.0.1:30020"
 SERVER_TRANSPORT = "sse"
 SERVER_HOST = "localhost"
 SERVER_PORT = 8000
+
+# ── Builder Mode — C++ File Generation ───────────────────────────────
+# Directory where generated .h/.cpp files are written.
+CPP_OUTPUT_DIR = os.getenv("CPP_OUTPUT_DIR", os.path.join(os.getcwd(), "generated"))
+
+# The Unreal project API export macro (e.g., MYPROJECT_API).
+# Set this in your .env to match your Unreal project name.
+PROJECT_API = os.getenv("PROJECT_API", "YOURPROJECT_API")
