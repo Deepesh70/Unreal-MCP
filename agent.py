@@ -5,6 +5,7 @@ Modes:
     python agent.py groq --build              # LIVE builder (spawns in UE!)
     python agent.py groq --build -i           # Interactive builder
     python agent.py groq --two-phase          # C++ code generator
+    python agent.py groq --orchestrate        # C++ + placement orchestrator
     python agent.py groq --test               # Quick test (1 API call)
 
 Backends:
@@ -15,16 +16,14 @@ Backends:
 
 import asyncio
 import sys
-import io
 import os
+from stdio_config import configure_windows_stdio_utf8
 
 # Suppress TensorFlow and oneDNN C++ warnings during HuggingFace embeddings load
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+configure_windows_stdio_utf8()
 
 
 def print_usage():
@@ -42,22 +41,24 @@ def print_usage():
 
   Modes:
     --build / -b       LIVE BUILDER: spawns objects in UE via WebSocket!
-        --two-phase / -2   C++ class generator (writes + compile checks)
+    --two-phase / -2   C++ class generator (writes + compile checks)
+    --orchestrate / -o Unified C++ + scene deployment flow
     --test             Quick test (1 API call)
     (default)          Classic tool-calling agent
 
   Options:
     --interactive / -i  Interactive chat mode
     --prompt "..."      Custom prompt
-        --dry-run           Two-phase preview only (no file writes, no compile)
-        --level "..."       Target level hint for --build mode prompts
+    --dry-run           Two-phase preview only (no file writes, no compile)
+    --level "..."       Target level hint for --build/--orchestrate prompts
 
   Examples:
     python agent.py groq -b -i              # Interactive builder (BEST)
     python agent.py groq -b --prompt "build a hut"
-        python agent.py groq -b --level "/Game/Maps/TestMap" --prompt "spawn 3 cubes"
-        python agent.py groq -2 -i              # C++ generator with compile checks
-        python agent.py groq -2 --dry-run --prompt "Create WeatherController actor"
+    python agent.py groq -b --level "/Game/Maps/TestMap" --prompt "spawn 3 cubes"
+    python agent.py groq -2 -i              # C++ generator with compile checks
+    python agent.py groq -2 --dry-run --prompt "Create WeatherController actor"
+    python agent.py groq -o --prompt "Create C++ LaserTrap and place 3 in scene"
     python agent.py groq --test             # Quick test
 
 ==============================================================
@@ -69,6 +70,7 @@ def parse_options():
     interactive = "--interactive" in sys.argv or "-i" in sys.argv
     two_phase = "--two-phase" in sys.argv or "-2" in sys.argv
     build_mode = "--build" in sys.argv or "-b" in sys.argv
+    orchestrate_mode = "--orchestrate" in sys.argv or "-o" in sys.argv
     dry_run = "--dry-run" in sys.argv
     level = None
     prompt = None
@@ -83,7 +85,7 @@ def parse_options():
         if idx + 1 < len(sys.argv):
             level = sys.argv[idx + 1]
 
-    return test_mode, interactive, two_phase, build_mode, dry_run, level, prompt
+    return test_mode, interactive, two_phase, build_mode, orchestrate_mode, dry_run, level, prompt
 
 
 def _require_prompt(mode_name: str, prompt: str | None) -> bool:
@@ -100,7 +102,7 @@ async def main():
         sys.exit(1)
 
     backend = sys.argv[1].lower()
-    test_mode, interactive, two_phase, build_mode, dry_run, level, custom_prompt = parse_options()
+    test_mode, interactive, two_phase, build_mode, orchestrate_mode, dry_run, level, custom_prompt = parse_options()
 
     # ── Create LLM ──────────────────────────────────────────────
     if backend == "groq":
@@ -145,6 +147,25 @@ async def main():
         return
 
     # ── C++ Code Generation Mode ────────────────────────────────
+    # Orchestrator mode: bridges C++ generation and in-editor deployment.
+    if orchestrate_mode:
+        from agents.orchestrator import orchestrate_in_ue, interactive_orchestrator
+
+        if dry_run:
+            print("Note: --dry-run is ignored in --orchestrate mode.")
+
+        if interactive:
+            await interactive_orchestrator(llm, label, level=level)
+        else:
+            if not _require_prompt("orchestrate", custom_prompt):
+                print_usage()
+                sys.exit(1)
+
+            result = await orchestrate_in_ue(llm, custom_prompt, level=level)
+            print(f"\n[RESULT] {result}")
+        return
+
+    # Two-phase mode: C++ generation + headless compile validation.
     if two_phase:
         from agents.pipeline import two_phase_run, interactive_two_phase
         write_files = not dry_run

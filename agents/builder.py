@@ -11,14 +11,12 @@ Result: Objects appear in the UE viewport immediately.
 import json
 import re
 import sys
-import io
 import asyncio
 import os
 from typing import Any, Dict, List, Tuple
+from stdio_config import configure_windows_stdio_utf8
 
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+configure_windows_stdio_utf8()
 
 from langchain_core.messages import HumanMessage, SystemMessage
 

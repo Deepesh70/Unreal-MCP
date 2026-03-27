@@ -137,3 +137,17 @@ async def send_ue_ws_object_describe(object_path: str) -> dict:
             last_error = e
 
     raise Exception(f"Could not describe object '{object_path}': {last_error}")
+
+
+async def is_ue_ws_reachable(timeout_seconds: float = 2.0) -> bool:
+    """Quick health check: returns True if UE websocket endpoint accepts a connection."""
+    try:
+        async with websockets.connect(
+            UE_WS_URL,
+            open_timeout=timeout_seconds,
+            close_timeout=timeout_seconds,
+        ) as ws:
+            await ws.close()
+        return True
+    except Exception:
+        return False

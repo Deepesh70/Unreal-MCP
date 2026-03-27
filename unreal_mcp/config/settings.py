@@ -49,7 +49,26 @@ UE_EXPORT_MACRO = os.getenv("UE_EXPORT_MACRO", f"{UE_MODULE_NAME.upper()}_API")
 # Adjust the drive letter 'E:' if your UE5.6 is installed elsewhere!
 UE_ENGINE_PATH = os.getenv("UE_ENGINE_PATH", r"E:\Unreal Engine\UE_5.6")
 UE_BATCH_FILES_PATH = os.path.join(UE_ENGINE_PATH, r"Engine\Build\BatchFiles\Build.bat")
+UE_EDITOR_EXE_PATH = os.path.join(UE_ENGINE_PATH, r"Engine\Binaries\Win64\UnrealEditor.exe")
 
 # ── Codegen Settings ──────────────────────────────────────────────────
 # Max retries for the self-healing compiler loop
 MAX_COMPILE_RETRIES = _env_int("MAX_COMPILE_RETRIES", 3)
+
+# Orchestrator lifecycle options
+ORCH_EDITOR_CLOSE_TIMEOUT_SEC = _env_int("ORCH_EDITOR_CLOSE_TIMEOUT_SEC", 45)
+ORCH_EDITOR_BOOT_TIMEOUT_SEC = _env_int("ORCH_EDITOR_BOOT_TIMEOUT_SEC", 180)
+ORCH_FORCE_EDITOR_CLOSE = os.getenv("ORCH_FORCE_EDITOR_CLOSE", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+    "y",
+}
+ORCH_ENABLE_LIVE_CODING = os.getenv("ORCH_ENABLE_LIVE_CODING", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+    "y",
+}

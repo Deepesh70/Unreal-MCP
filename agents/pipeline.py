@@ -6,14 +6,12 @@ Self-Correcting, Topologically Sorted, and Engine-Validated.
 import json
 import re
 import sys
-import io
 import traceback
 import asyncio
+from stdio_config import configure_windows_stdio_utf8
 
 # Fix encoding for Windows terminals to prevent UnicodeDecodeErrors
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+configure_windows_stdio_utf8()
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -98,11 +96,16 @@ async def generate_blueprint_json(llm, targeted_prompt: str) -> dict:
         raise
 
 
-async def two_phase_run(llm, user_prompt: str, write_files: bool = True) -> str:
+async def two_phase_run(
+    llm,
+    user_prompt: str,
+    write_files: bool = True,
+    validate_compile: bool = True,
+) -> str:
     """The Complete Self-Healing CI/CD Pipeline."""
     print(f"\n{'='*60}\n  STARTING CI/CD PIPELINE\n{'='*60}")
 
-    if write_files:
+    if write_files and validate_compile:
         ok, preflight_msg = run_compile_preflight_check()
         if not ok:
             print("\n[PRECHECK] Environment not ready for headless compile.")
@@ -215,8 +218,8 @@ async def two_phase_run(llm, user_prompt: str, write_files: bool = True) -> str:
                     print(f"  [WRITE] {h_path}")
                     print(f"  [WRITE] {cpp_path}")
 
-                # 4. Compile validation (if writing files)
-                if write_files:
+                # 4. Compile validation (optional, headless mode)
+                if write_files and validate_compile:
                     ok, compile_log = run_headless_compile_check()
                     if not ok:
                         current_error_log = compile_log or "Unknown compile error"
@@ -224,6 +227,11 @@ async def two_phase_run(llm, user_prompt: str, write_files: bool = True) -> str:
                         print("  [CI/CD] Compile failed. Retrying with compiler feedback...")
                         continue
 
+                # When compile validation is disabled (live coding path), still
+                # pass header context forward so multi-class generation remains coherent.
+                if write_files and (not validate_compile):
+                    code_context += f"\n// {blueprint.class_name}.h\n{header_code[:4000]}\n"
+                elif write_files and validate_compile:
                     # Add successful module header to future class context only after validation passes.
                     code_context += f"\n// {blueprint.class_name}.h\n{header_code[:4000]}\n"
 
@@ -250,6 +258,8 @@ async def two_phase_run(llm, user_prompt: str, write_files: bool = True) -> str:
             )
 
     print(f"\n{'='*60}\n  CI/CD PIPELINE COMPLETE: {len(compile_order)} modules written.\n{'='*60}")
+    if write_files and not validate_compile:
+        return f"Build Generated (compile deferred): {compile_order}"
     return f"Build Successful: {compile_order}"
 
 
@@ -275,5 +285,5 @@ async def interactive_two_phase(llm, model_label: str, write_files: bool = False
             print("Exiting two-phase mode.")
             break
 
-        result = await two_phase_run(llm, user_input, write_files=write_files)
+        result = await two_phase_run(llm, user_input, write_files=write_files, validate_compile=write_files)
         print(f"\n[RESULT] {result}")

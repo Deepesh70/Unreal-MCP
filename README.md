@@ -5,6 +5,7 @@ Unreal MCP Agent connects Unreal Engine Remote Control to LLM-driven automation.
 This repository provides two production workflows:
 - Live scene building in an open Unreal Editor session.
 - Multi-phase C++ class generation with compile validation.
+- Orchestrated C++ generation + automatic deployment back into scene.
 
 It also includes a classic tool-calling mode and a FastAPI websocket bridge for external frontends.
 
@@ -76,6 +77,12 @@ Builder token policy variables:
 - `BUILD_MAX_SCENE_CONTEXT_CHARS` = integer
 - `BUILD_MAX_BLUEPRINT_CONTEXT_CHARS` = integer
 
+Orchestrator lifecycle variables:
+- `ORCH_EDITOR_CLOSE_TIMEOUT_SEC` = integer seconds (default `45`)
+- `ORCH_EDITOR_BOOT_TIMEOUT_SEC` = integer seconds (default `180`)
+- `ORCH_FORCE_EDITOR_CLOSE` = `true`/`false` (default `false`)
+- `ORCH_ENABLE_LIVE_CODING` = `true`/`false` (default `true`)
+
 ### 5.2 `unreal_mcp/config/settings.py`
 
 Current settings are environment-aware (`os.getenv`) with defaults.
@@ -84,7 +91,7 @@ Key values:
 - `UE_WS_URL`
 - `SERVER_TRANSPORT`, `SERVER_HOST`, `SERVER_PORT`
 - `UE_PROJECT_ROOT`, `UE_PROJECT_NAME`, `UE_PROJECT_FILE_PATH`
-- `UE_ENGINE_PATH`, `UE_BATCH_FILES_PATH`
+- `UE_ENGINE_PATH`, `UE_BATCH_FILES_PATH`, `UE_EDITOR_EXE_PATH`
 - `UE_MODULE_NAME`, `UE_EXPORT_MACRO`, `UE_ENGINE_VERSION`
 - `MAX_COMPILE_RETRIES`
 
@@ -112,6 +119,7 @@ Backends:
 Modes:
 - `--build` / `-b` - live scene builder.
 - `--two-phase` / `-2` - multi-phase C++ codegen pipeline.
+- `--orchestrate` / `-o` - auto closes editor (if needed), compiles C++, relaunches editor, and places generated classes.
 - `--test` - one lightweight connectivity/tool test.
 - default (no mode) - classic tool-calling agent.
 
@@ -132,6 +140,7 @@ Examples:
 python agent.py groq --build --prompt "spawn one large cube at origin"
 python agent.py groq --build --level "/Game/Maps/TestMap" --prompt "spawn 3 cubes"
 python agent.py groq --two-phase --prompt "Create a CubeMarker actor with one StaticMeshComponent"
+python agent.py groq --orchestrate --prompt "Create a C++ LaserTrap and place 3 in the scene"
 python agent.py groq --two-phase --dry-run --prompt "Create WeatherController actor"
 python agent.py groq --test
 ```
@@ -187,6 +196,16 @@ Compile preflight checks include:
 - source directory exists
 - Unreal Editor process not running
 - live coding patch artifact detection
+
+### 7.4 Orchestrator Pipeline (`agents/orchestrator.py`)
+
+For mixed requests that include both C++ generation and scene placement:
+1. Analyze prompt intent (codegen vs placement).
+2. If editor is open, try Live Coding compile trigger through Remote Control.
+3. If Live Coding trigger fails, close editor for safe headless compile.
+4. Run two-phase C++ generation/compile pipeline.
+5. Relaunch Unreal Editor when needed.
+6. Wait for Remote Control websocket and spawn generated class instances.
 
 ## 8. MCP Tools (Current)
 

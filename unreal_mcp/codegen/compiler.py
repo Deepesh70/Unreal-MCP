@@ -1,12 +1,15 @@
 import subprocess
 import os
 import sys
+import time
 from pathlib import Path
 from unreal_mcp.config.settings import (
     UE_BATCH_FILES_PATH, 
     UE_PROJECT_FILE_PATH, 
     UE_PROJECT_NAME,
     UE_PROJECT_ROOT,
+    UE_EDITOR_EXE_PATH,
+    ORCH_EDITOR_CLOSE_TIMEOUT_SEC,
 )
 
 
@@ -59,6 +62,111 @@ def _is_unreal_editor_running() -> bool:
     return any(name in process_names for name in editor_markers)
 
 
+def is_unreal_editor_running() -> bool:
+    """Public wrapper to check Unreal Editor process state."""
+    return _is_unreal_editor_running()
+
+
+def stop_unreal_editor(force: bool = False, timeout_seconds: int | None = None) -> tuple[bool, str]:
+    """
+    Attempt to stop Unreal Editor processes.
+
+    Args:
+        force: When True, force-kill if graceful close does not finish in time.
+        timeout_seconds: Max wait before optional force kill.
+    """
+    if timeout_seconds is None:
+        timeout_seconds = ORCH_EDITOR_CLOSE_TIMEOUT_SEC
+
+    if not _is_unreal_editor_running():
+        return True, "Unreal Editor is not running."
+
+    # Best-effort graceful close first.
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/IM", "UnrealEditor.exe", "/T"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            subprocess.run(
+                ["taskkill", "/IM", "UE4Editor.exe", "/T"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        else:
+            subprocess.run(["pkill", "-TERM", "-f", "UnrealEditor"], capture_output=True, text=True)
+            subprocess.run(["pkill", "-TERM", "-f", "UE4Editor"], capture_output=True, text=True)
+    except Exception as e:
+        return False, f"Failed to issue graceful close command: {e}"
+
+    deadline = time.time() + max(1, timeout_seconds)
+    while time.time() < deadline:
+        if not _is_unreal_editor_running():
+            return True, "Unreal Editor closed gracefully."
+        time.sleep(1)
+
+    if not force:
+        return False, (
+            "Unreal Editor did not close before timeout. "
+            "Retry with force=True or close it manually."
+        )
+
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "UnrealEditor.exe", "/T"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "UE4Editor.exe", "/T"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        else:
+            subprocess.run(["pkill", "-KILL", "-f", "UnrealEditor"], capture_output=True, text=True)
+            subprocess.run(["pkill", "-KILL", "-f", "UE4Editor"], capture_output=True, text=True)
+    except Exception as e:
+        return False, f"Force-kill command failed: {e}"
+
+    if _is_unreal_editor_running():
+        return False, "Unreal Editor is still running after force-close attempt."
+    return True, "Unreal Editor force-closed."
+
+
+def start_unreal_editor(startup_map: str | None = None) -> tuple[bool, str]:
+    """Launch Unreal Editor for the configured project."""
+    if not Path(UE_EDITOR_EXE_PATH).exists():
+        return False, f"UnrealEditor.exe not found: {UE_EDITOR_EXE_PATH}"
+
+    if not Path(UE_PROJECT_FILE_PATH).exists():
+        return False, f".uproject not found: {UE_PROJECT_FILE_PATH}"
+
+    cmd = [UE_EDITOR_EXE_PATH, UE_PROJECT_FILE_PATH]
+    if startup_map:
+        cmd.append(startup_map)
+
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            shell=False,
+        )
+        return True, "Unreal Editor launch command issued."
+    except Exception as e:
+        return False, f"Failed to launch Unreal Editor: {e}"
+
+
 def _find_live_coding_patch_artifacts(limit: int = 10) -> list[Path]:
     """Find common Live Coding patch outputs that can poison linker state."""
     roots = [
@@ -85,15 +193,6 @@ def _find_live_coding_patch_artifacts(limit: int = 10) -> list[Path]:
             # Best-effort scan only.
             continue
     return found
-    try:
-        if sys.platform == "win32":
-            out = subprocess.check_output(["tasklist"], text=True, encoding="utf-8", errors="replace")
-            return "UnrealEditor.exe" in out
-
-        out = subprocess.check_output(["ps", "-A"], text=True, encoding="utf-8", errors="replace")
-        return "UnrealEditor" in out
-    except Exception:
-        return False
 
 
 def run_compile_preflight_check() -> tuple[bool, str]:
