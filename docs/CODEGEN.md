@@ -53,11 +53,14 @@ codegen/compiler.py runs headless compile check
 
 ```bash
 # Default two-phase mode: write + compile validate
-python agent.py groq --two-phase
+python agent.py groq --two-phase --prompt "Create a CubeMarker actor"
 
 # Dry run: no file writes and no compile checks
-python agent.py groq --two-phase --dry-run
+python agent.py groq --two-phase --dry-run --prompt "Create a WeatherController actor"
 ```
+
+Note:
+- Non-interactive two-phase runs require `--prompt`.
 
 ## MCP Tools
 

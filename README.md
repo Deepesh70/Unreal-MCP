@@ -2,84 +2,55 @@
 
 Unreal MCP Agent connects Unreal Engine Remote Control to LLM-driven automation.
 
-It supports:
-- Live scene building from natural language.
-- Scene-aware planning with optional RAG blueprint retrieval.
-- Tool-calling agent mode for direct Unreal operations.
-- Two-phase C++ class generation for Unreal projects.
-- Mesh settings discovery, validation, read, write, and sync operations.
+This repository provides two production workflows:
+- Live scene building in an open Unreal Editor session.
+- Multi-phase C++ class generation with compile validation.
 
-This README is a full, current reference for the repository state.
+It also includes a classic tool-calling mode and a FastAPI websocket bridge for external frontends.
 
-## 1. What This Project Does
+## 1. Current Project Scope
 
 At runtime, the system exposes an MCP server (`UnrealMCP`) with tools that can:
 - Spawn actors and basic shapes in Unreal.
-- List existing actors and their full object paths.
+- List existing actors and full object paths.
 - Move, rotate, and scale actors.
-- Query scene context and recommend safe build offsets.
-- Generate and preview Unreal C++ classes from structured JSON blueprints.
-- Inspect source files and supported C++ generation types.
-- Manage mesh properties for specific mesh components with discovery and validation.
+- Query scene context and suggest safe build offsets.
+- Discover, validate, read, write, and sync mesh settings.
+- Generate and preview Unreal C++ classes from structured Blueprint JSON.
+- Inspect project source files and list supported generation types.
 
-On the agent side, there are multiple workflows:
-- Classic tool-calling mode (`agents/base.py`).
-- Live builder pipeline (`agents/builder.py`) for scene construction.
-- Two-phase codegen pipeline (`agents/pipeline.py`) for C++ classes.
+## 2. Current Repository Structure
 
-## 2. Current Architecture
+Top-level:
+- `agent.py` - CLI launcher for all agent modes.
+- `server.py` - FastMCP server entry point.
+- `api_server.py` - FastAPI websocket bridge (`/ws/chat`).
+- `requirements.txt` - Python dependencies.
+- `.env.example` - environment variable template.
+- `README.md` - this file.
 
-### 2.1 High-Level Flow
+Runtime directories:
+- `agents/` - orchestration and LLM workflows.
+- `unreal_mcp/` - MCP package, tools, mappings, transport, codegen.
+- `data/blueprints/` - optional RAG markdown documents.
+- `data/chroma_db/` - persisted Chroma vector DB.
+- `docs/` - implementation docs.
 
-1. User runs `agent.py` with a backend (`groq`, `ollama`, or `gemini`).
-2. Agent connects to MCP server (`server.py`) via SSE.
-3. MCP server exposes tools from `unreal_mcp/tools/*`.
-4. Tools call Unreal through Remote Control WebSocket transport in `unreal_mcp/connection/websocket.py`.
-5. Unreal executes object calls/property operations and returns responses.
+Important note:
+- Demo/test scripts were removed from production root.
 
-### 2.2 Runtime Layers
+## 3. Prerequisites
 
-- Entry points:
-  - `server.py`: starts FastMCP server.
-  - `agent.py`: CLI launcher and mode selection.
-- Agent workflows:
-  - `agents/base.py`
-  - `agents/builder.py`
-  - `agents/pipeline.py`
-- MCP package:
-  - `unreal_mcp/__init__.py` (creates shared FastMCP instance)
-  - `unreal_mcp/tools/*` (tool registration and tool logic)
-  - `unreal_mcp/connection/*` (UE transport)
-  - `unreal_mcp/config/settings.py` (host, port, UE path, WS URL)
-- Codegen:
-  - `unreal_mcp/codegen/*`
-- Mappings:
-  - `unreal_mcp/mappings/assets.py`
-  - `unreal_mcp/mappings/classes.py`
+- Python 3.10+ recommended.
+- Unreal Engine project with Remote Control enabled.
+- Remote Control websocket reachable (default `ws://127.0.0.1:30020`).
+- API key for the backend you use (`groq` or `gemini`) or local Ollama running.
 
-## 3. Repository Structure
+For two-phase compile mode specifically:
+- Unreal Editor should be closed during headless compile checks.
+- Unreal Build Tool path and `.uproject` path must be correct in settings.
 
-Top-level important files and folders:
-
-- `agent.py`: CLI launcher for all agent modes.
-- `server.py`: FastMCP server launcher.
-- `api_server.py`: FastAPI websocket bridge for external clients.
-- `requirements.txt`: Python dependencies.
-- `.env.example`: environment variable template.
-- `agents/`: orchestration logic and LLM adapters.
-- `unreal_mcp/`: MCP package and tools.
-- `data/blueprints/`: markdown blueprint documents for RAG.
-- `data/chroma_db/`: persisted Chroma vectorstore.
-- `docs/`: internal developer docs.
-
-## 4. Prerequisites
-
-- Python 3.8+
-- Unreal Engine with Remote Control plugin available
-- Remote Control Web Interface running in editor
-- Network access to UE Remote Control websocket endpoint
-
-## 5. Installation
+## 4. Installation
 
 Install dependencies:
 
@@ -87,312 +58,264 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Core dependencies include:
-- `fastmcp`
-- `websockets`
-- `langchain` and adapters
-- `langchain_groq`, `langchain_ollama`, `langchain_google_genai`
-- `langchain_chroma`, `langchain_huggingface`
-- `python-dotenv`
+## 5. Configuration
 
-## 6. Configuration
+### 5.1 `.env` Variables
 
-### 6.1 Environment Variables (`.env`)
+Copy `.env.example` to `.env` and set only what you need.
 
-Copy `.env.example` to `.env` and set only the provider keys you use.
-
-Typical variables:
+Common variables:
 - `GROQ_API_KEY`
 - `GOOGLE_API_KEY`
-- `OLLAMA_BASE_URL` (optional, defaults to localhost)
+- `OLLAMA_BASE_URL` (optional)
 
-Builder token optimization variables:
+Builder token policy variables:
 - `BUILD_TOKEN_MODE` = `low` | `balanced` | `high`
 - `BUILD_ENABLE_PLAN_REVIEW` = `true`/`false`
 - `BUILD_ENABLE_JSON_REPAIR` = `true`/`false`
 - `BUILD_MAX_SCENE_CONTEXT_CHARS` = integer
 - `BUILD_MAX_BLUEPRINT_CONTEXT_CHARS` = integer
 
-### 6.2 Static Settings (`unreal_mcp/config/settings.py`)
+### 5.2 `unreal_mcp/config/settings.py`
 
-Adjust as needed:
-- `UE_WS_URL` (default `ws://127.0.0.1:30020`)
-- `SERVER_HOST`, `SERVER_PORT`
+Current settings are environment-aware (`os.getenv`) with defaults.
+
+Key values:
+- `UE_WS_URL`
+- `SERVER_TRANSPORT`, `SERVER_HOST`, `SERVER_PORT`
 - `UE_PROJECT_ROOT`, `UE_PROJECT_NAME`, `UE_PROJECT_FILE_PATH`
 - `UE_ENGINE_PATH`, `UE_BATCH_FILES_PATH`
 - `UE_MODULE_NAME`, `UE_EXPORT_MACRO`, `UE_ENGINE_VERSION`
 - `MAX_COMPILE_RETRIES`
 
-## 7. Running the System
+## 6. Running the System
 
-### 7.1 Start MCP Server
+### 6.1 Start MCP Server
 
 ```bash
 python server.py
 ```
 
-### 7.2 Start Agent
+### 6.2 Agent CLI
 
-Interactive live builder:
+General syntax:
 
 ```bash
-python agent.py groq -b -i
+python agent.py <backend> [mode] [options]
 ```
 
-Other modes:
+Backends:
+- `groq`
+- `ollama`
+- `gemini`
+
+Modes:
+- `--build` / `-b` - live scene builder.
+- `--two-phase` / `-2` - multi-phase C++ codegen pipeline.
+- `--test` - one lightweight connectivity/tool test.
+- default (no mode) - classic tool-calling agent.
+
+Options:
+- `--interactive` / `-i`
+- `--prompt "..."`
+- `--dry-run` (two-phase only, no file write/compile)
+- `--level "..."` (build-mode hint only)
+
+Prompt requirement behavior:
+- In non-interactive build mode, prompt is required.
+- In non-interactive two-phase mode, prompt is required.
+- In non-interactive classic mode, prompt is required unless `--test` is used.
+
+Examples:
 
 ```bash
+python agent.py groq --build --prompt "spawn one large cube at origin"
+python agent.py groq --build --level "/Game/Maps/TestMap" --prompt "spawn 3 cubes"
+python agent.py groq --two-phase --prompt "Create a CubeMarker actor with one StaticMeshComponent"
+python agent.py groq --two-phase --dry-run --prompt "Create WeatherController actor"
 python agent.py groq --test
-python agent.py groq --two-phase
-python agent.py groq --two-phase --dry-run
-python agent.py ollama -b -i
-python agent.py gemini -b -i
 ```
 
-## 8. Agent Modes
+## 7. Agent Workflows
 
-### 8.1 Classic Tool-Calling Mode
+### 7.1 Classic Tool-Calling (`agents/base.py`)
 
-File: `agents/base.py`
+- Connects to MCP SSE endpoint (`http://localhost:8000/sse`).
+- Loads all registered tools.
+- Executes user prompt through LangChain agent.
 
-Behavior:
-- Connects to SSE MCP endpoint at `http://localhost:8000/sse`.
-- Loads all FastMCP tools.
-- Executes user requests via LangChain agent.
+### 7.2 Live Builder (`agents/builder.py`)
 
-### 8.2 Live Builder Mode
+Pipeline:
+1. Query scene context.
+2. Optional RAG blueprint retrieval (`agents/rag_store.py`).
+3. Refine user request into build spec.
+4. Generate plan JSON.
+5. Optional plan review/refinement pass.
+6. Sanitize steps and execute in Unreal.
 
-File: `agents/builder.py`
+Supported plan actions:
+- `spawn`
+- `scale`
+- `rotate`
+- `mesh_settings`
+- `sync_mesh_settings`
 
-Pipeline phases:
-1. Phase 0: scene query + safe-offset context.
-2. Phase 0.5: optional blueprint retrieval from RAG store.
-3. Phase 1: prompt refinement.
-4. Phase 2: build-plan JSON generation.
-5. Phase 2b: optional geometry review/refinement pass.
-6. Phase 3: execute plan step-by-step in Unreal.
+Reliability features:
+- token policy modes (`low`, `balanced`, `high`)
+- JSON extraction and cleanup
+- optional JSON repair pass
+- dropped-step sanitization reporting
+- phase and overall token accounting
 
-Key reliability features:
-- Token policy modes (`low`/`balanced`/`high`).
-- Context truncation for token control.
-- JSON extraction + cleanup.
-- Optional JSON repair LLM pass.
-- Plan sanitization (`spawn`, `scale`, `rotate`, `mesh_settings`, `sync_mesh_settings`).
-- Dropped invalid step reporting.
+### 7.3 Two-Phase C++ Pipeline (`agents/pipeline.py`)
 
-Token accounting:
-- Per-phase token logging:
-  - Phase 1 Refine
-  - Phase 2 Plan
-  - Phase 2 Review (if enabled)
-  - Phase 2 Repair (if triggered)
-- Overall token totals at build completion.
+Pipeline:
+1. Optional compile preflight check (when writing files).
+2. Refine prompt into technical spec.
+3. Generate architecture manifest (`modules` + dependencies).
+4. Resolve topological compile order.
+5. Per module: generate Blueprint JSON, normalize/fix schema fields.
+6. Validate via Pydantic schema.
+7. Render `.h/.cpp` via Jinja templates.
+8. Write files to `Source/<ProjectName>/`.
+9. Run headless compile; retry using compiler feedback.
 
-### 8.3 Two-Phase Codegen Mode
+Compile preflight checks include:
+- Build.bat path exists
+- `.uproject` exists
+- source directory exists
+- Unreal Editor process not running
+- live coding patch artifact detection
 
-File: `agents/pipeline.py`
+## 8. MCP Tools (Current)
 
-Flow:
-1. Run compile preflight checks (only when writing files).
-2. Refine request into a technical specification with scene context.
-3. Build architecture manifest and resolve topological compile order.
-4. Generate per-module Blueprint JSON payloads.
-5. Validate schema, render `.h/.cpp`, and write source files.
-6. Run headless compile checks and retry failed modules with compiler feedback.
+Registered via `unreal_mcp/tools/__init__.py`.
 
-Notes:
-- Default two-phase mode writes files and runs compile checks.
-- Use `--dry-run` to preview generation without writing/compiling.
-
-## 9. MCP Tools (Current)
-
-Registered through `unreal_mcp/tools/__init__.py`.
-
-### 9.1 Actor/Scene Tools
-
+### 8.1 Actor and Scene
 - `list_actors()`
-  - Lists actor names and object paths.
 - `get_scene_summary()`
-  - Summarizes current scene and provides safe build origin guidance.
 
-### 9.2 Spawn/Transform Tools
-
+### 8.2 Spawn and Transform
 - `spawn_actor(actor_class_or_asset, x, y, z)`
 - `set_actor_scale(actor_path, scale_x, scale_y, scale_z)`
 - `set_actor_rotation(actor_path, pitch, yaw, roll)`
 - `set_actor_location(actor_path, x, y, z)`
 
-Supported basic shapes (asset map):
-- `cube`, `sphere`, `cylinder`, `cone`, `plane`
-
-Supported mapped classes (class map):
-- `pointlight`, `spotlight`, `directional_light`
-
-### 9.3 Mesh Settings Tools
-
-File: `unreal_mcp/tools/mesh_settings.py`
-
+### 8.3 Mesh Settings
 - `list_mesh_settings(actor_or_mesh_path, contains="", limit=120)`
-  - Discover available property names.
 - `validate_mesh_settings(actor_or_mesh_path, setting_names)`
-  - Validate names and suggest close matches.
 - `read_mesh_settings(actor_or_mesh_path, setting_names)`
-  - Read current values.
 - `set_mesh_settings(actor_or_mesh_path, settings)`
-  - Write one or many properties.
 - `sync_mesh_settings(actor_or_mesh_path, desired_settings)`
-  - Read current values and write only changed ones.
 
-Path resolution behavior:
-- Tries provided path first, then common mesh component suffixes:
-  - `.StaticMeshComponent0`
-  - `.StaticMeshComponent`
-  - `.Mesh`
+Mesh path resolution attempts:
+- exact path
+- `.StaticMeshComponent0`
+- `.StaticMeshComponent`
+- `.Mesh`
 
-### 9.4 Project/Codegen Tools
-
+### 8.4 Project and Codegen
 - `get_project_info()`
 - `list_project_files()`
 - `list_supported_types()`
 - `generate_ue_class(blueprint_json)`
 - `preview_ue_class(blueprint_json)`
 
-## 10. Unreal Transport API
+## 9. Mappings and Transport
 
-File: `unreal_mcp/connection/websocket.py`
+Mappings:
+- `unreal_mcp/mappings/assets.py`
+  - `cube`, `sphere`, `cylinder`, `cone`, `plane`
+- `unreal_mcp/mappings/classes.py`
+  - `pointlight`, `spotlight`, `directional_light`
+  - `grid_generator` -> `/Game/BP_GridGenerator.BP_GridGenerator_C`
 
-Functions:
-- `send_ue_ws_http_request(url, verb="PUT", body=None)`
-- `send_ue_ws_command(object_path, function_name, parameters=None)`
-- `send_ue_ws_property_update(object_path, property_name, property_value)`
-- `send_ue_ws_property_read(object_path, property_name)`
-- `send_ue_ws_object_describe(object_path)`
+Transport API (`unreal_mcp/connection/websocket.py`):
+- `send_ue_ws_http_request(...)`
+- `send_ue_ws_command(...)`
+- `send_ue_ws_property_update(...)`
+- `send_ue_ws_property_read(...)`
+- `send_ue_ws_object_describe(...)`
 
 `send_ue_ws_object_describe` tries multiple endpoints for compatibility:
 - `/remote/object/describe`
 - `/remote/object`
 - `/remote/object/metadata`
 
-## 11. RAG Blueprint Retrieval
+## 10. Codegen Internals
 
-File: `agents/rag_store.py`
+- Schema: `unreal_mcp/codegen/schema.py` (Pydantic models)
+- Type mapping: `unreal_mcp/codegen/type_mapper.py`
+- Rendering: `unreal_mcp/codegen/renderer.py`
+- Templates:
+  - `unreal_mcp/templates/base_actor.h.j2`
+  - `unreal_mcp/templates/base_actor.cpp.j2`
+- File writing and backups: `unreal_mcp/codegen/file_writer.py`
+  - existing files are rotated to `.bak`
+- Dependency order resolver: `unreal_mcp/codegen/sorter.py`
+- Headless compile and preflight: `unreal_mcp/codegen/compiler.py`
 
-Behavior:
-- Loads markdown files from `data/blueprints/*.md`.
-- Embeds text with `all-MiniLM-L6-v2`.
-- Stores/reloads vectors in Chroma at `data/chroma_db`.
-- Retrieves top semantic match with relevance check before injection.
+## 11. FastAPI Bridge
 
-## 12. Prompting Guidelines for Better Builds
+`api_server.py` exposes:
+- websocket endpoint: `/ws/chat`
+- preflight UE websocket connectivity check
+- status streaming messages during build
 
-For reliable geometry:
-- Use two-pass prompting:
-  - Pass 1: structural shell (floor/walls/openings).
-  - Pass 2: roof/details/decor.
-- Keep each pass bounded (for example, under 30-40 steps).
-- Use explicit numeric coordinates and labels.
-- Keep roof instructions deterministic with fixed rotations and centers.
+## 12. Level-Specific Behavior
 
-For lower token usage:
-- Set `BUILD_TOKEN_MODE=low`.
-- Disable review for draft runs.
-- Re-enable review for final quality runs.
+- Two-phase code generation is not level-specific; it generates C++ source files.
+- Build/spawn workflow affects the currently open Unreal level.
+- `--level` is a prompt hint in build mode; it is ignored in two-phase mode.
 
 ## 13. Troubleshooting
 
-### 13.1 `python agent.py ... -b -i` exits with error
+### 13.1 Prompt missing errors
 
-Check:
-- MCP server is running on expected host/port.
-- Correct Python environment has all requirements installed.
-- LLM API key for selected provider is configured.
+If you run non-interactive modes without `--prompt`, CLI exits and requests a prompt.
 
-### 13.2 Build output has detached roofs or bad openings
+### 13.2 Two-phase preflight fails
 
-Common causes:
-- Center-pivot rotation not compensated.
-- Overly long prompt leading to malformed/approximate coordinates.
-- Review pass disabled in low token mode.
+Check in `unreal_mcp/config/settings.py`:
+- `UE_PROJECT_ROOT`
+- `UE_PROJECT_FILE_PATH`
+- `UE_ENGINE_PATH`
+- `UE_BATCH_FILES_PATH`
 
-Actions:
-- Use deterministic two-pass prompts.
-- Keep `BUILD_ENABLE_PLAN_REVIEW=true` for final builds.
-- Keep JSON repair enabled.
+Also:
+- close Unreal Editor
+- remove Live Coding patch artifacts from project binaries
 
-### 13.3 JSON decode failures in Phase 2
+### 13.3 Generated classes not visible in Unreal Content Browser
 
-The pipeline includes:
-- JSON extraction/cleanup.
-- Optional auto-repair pass.
+- Open the correct Unreal project from `UE_PROJECT_ROOT`.
+- Rebuild C++ project.
+- Confirm files exist under `Source/<UE_PROJECT_NAME>/`.
 
-If still failing:
-- Reduce prompt complexity.
-- Split build into multiple prompts.
+### 13.4 Live build cannot connect to Unreal
 
-### 13.4 No actors or mesh paths resolve
-
-Check:
-- Unreal editor running with Remote Control enabled.
-- Correct object path from `list_actors`.
-- Mesh settings tool path fallback may still fail for custom component names.
+- Ensure Remote Control plugin/web interface is running.
+- Verify `UE_WS_URL` and network reachability.
 
 ## 14. Development Notes
 
-- Add new MCP tools in `unreal_mcp/tools/` and import them in `unreal_mcp/tools/__init__.py`.
-- Keep all UE websocket logic in `unreal_mcp/connection/websocket.py`.
-- Prefer explicit schema validation and sanitization before executing LLM outputs.
+- Add new tools in `unreal_mcp/tools/` and import them in `unreal_mcp/tools/__init__.py`.
+- Keep Unreal websocket calls centralized in `unreal_mcp/connection/websocket.py`.
+- Keep schema-first validation for all LLM-generated code payloads.
 
-Useful docs:
+Additional docs:
 - `docs/ADDING_TOOLS.md`
-- `docs/ARCHITECTURE.md`
 - `docs/AGENTS.md`
+- `docs/ARCHITECTURE.md`
 - `docs/CODEGEN.md`
+- `docs/FLOW_SPAWN.md`
+- `docs/FLOW_LIST.md`
+- `docs/FLOW_TRANSFORM.md`
 
-## 15. Security and Secrets
+## 15. Security
 
-- Never commit real API keys to version control.
+- Never commit real API keys.
 - Keep `.env` private.
-- Use `.env.example` as the public template.
-
-## 16. Quick Command Reference
-
-Start server:
-
-```bash
-python server.py
-```
-
-Run live builder (Groq):
-
-```bash
-python agent.py groq -b -i
-```
-
-Run tool-calling test:
-
-```bash
-python agent.py groq --test
-```
-
-Run two-phase codegen:
-
-```bash
-python agent.py groq --two-phase
-```
-
-Run two-phase codegen (dry run):
-
-```bash
-python agent.py groq --two-phase --dry-run
-```
-
-## 17. Current Status Summary
-
-This repository currently includes:
-- Multi-backend LLM integration.
-- Live Unreal build pipeline with token-aware controls.
-- Robust JSON handling and optional review/repair passes.
-- Mesh settings introspection and diff-based sync.
-- Code generation pipeline for Unreal C++ classes.
-- RAG-assisted architectural prompting from local blueprint docs.
-
+- Use `.env.example` as template only.
+ 
