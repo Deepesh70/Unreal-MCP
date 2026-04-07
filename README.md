@@ -145,6 +145,22 @@ python agent.py groq --two-phase --dry-run --prompt "Create WeatherController ac
 python agent.py groq --test
 ```
 
+### 6.3 UnrealUI (Web Interface)
+
+UnrealUI is a Next.js web application that connects to the Unreal Engine Builder via WebSockets. It provides a chat-like visual interface to issue building commands directly to Unreal Engine and streams the build progress in real-time.
+
+To start it:
+1. Start the FastAPI bridge server:
+   ```bash
+   uvicorn api_server:app --port 8080
+   ```
+2. In a separate terminal, navigate to your Next.js application directory (e.g. `prompt-builder-ui`) and start the frontend:
+   ```bash
+   npm run dev
+   ```
+   
+The bridge server will automatically check for Unreal Engine connectivity before routing your prompts to the Live Builder pipeline.
+
 ## 7. Agent Workflows
 
 ### 7.1 Classic Tool-Calling (`agents/base.py`)

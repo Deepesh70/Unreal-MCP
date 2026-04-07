@@ -663,6 +663,13 @@ async def build_in_ue(llm, user_prompt: str, status_callback=None) -> str:
         print("  Look at your Unreal viewport!")
         print(f"{'='*60}")
 
+        # Dispatch telemetry over websocket if a callback is provided
+        if status_callback:
+            await status_callback({
+                "type": "telemetry",
+                "usage": token_tracker['overall']
+            })
+
         return result
     except Exception as e:
         await log(f"\n  [ERROR] Build pipeline failed: {e}")
