@@ -56,8 +56,12 @@ Agent logic:
 - `agents/base.py`: Common tool-calling loop
 - `agents/builder.py`: Live build pipeline
 - `agents/pipeline.py`: Two-phase C++ pipeline
-- `agents/orchestrator.py`: Hybrid generation + deployment flow
+- `agents/orchestrator.py`: Hybrid generation + deployment flow (with robust intent analysis)
 - `agents/groq_agent.py`, `agents/ollama_agent.py`, `agents/gemini_agent.py`: backend factories
+
+Project Assets:
+- `data/blueprints/`: Semantic instructions/blueprints (Markdown) used for complex builds.
+- `unreal_mcp/mappings/`: Friendly-name to Unreal path mappings for common assets.
 
 ## How It Works
 
@@ -157,6 +161,10 @@ Compile/orchestrator controls:
 - `ORCH_EDITOR_BOOT_TIMEOUT_SEC` (default `180`)
 - `ORCH_FORCE_EDITOR_CLOSE` (bool)
 - `ORCH_ENABLE_LIVE_CODING` (bool, default `true`)
+
+Semantic Build Policy:
+- `BUILD_TOKEN_MODE`: Controls token usage strategy (`low`, `balanced`, `high`).
+- `BUILD_ENABLE_PLAN_REVIEW`: Enables an LLM-based QA pass for geometry refinement.
 
 Important: the checked-in defaults for project and engine paths are machine-specific placeholders. Set them to your local environment before using code generation/compile flows.
 
@@ -265,7 +273,7 @@ Supported `mode` values in bridge:
 - `build` (default)
 - `two_phase`
 - `classic`
-- `orchestrate` (currently routed to build fallback in `api_server.py`)
+- `orchestrate` (Natively supported via `orchestrate_in_ue`)
 
 ## Available MCP Tools
 
@@ -277,6 +285,7 @@ The server currently auto-registers tools from these modules:
 - `unreal_mcp/tools/codegen_tool.py`
 - `unreal_mcp/tools/project_tool.py`
 - `unreal_mcp/tools/scene_tool.py`
+- `unreal_mcp/tools/alignment.py` (New: Semantic Snapping)
 
 Tool summary:
 
@@ -287,6 +296,10 @@ Tool summary:
   - `set_actor_rotation(actor_path, pitch, yaw, roll)`
   - `set_actor_location(actor_path, x, y, z)`
   - `get_scene_summary()`
+
+- Alignment/Snapping tools (Deterministic Math):
+  - `get_actor_bounds(actor_path)`: Queries live bounding box from Unreal.
+  - `snap_to_actor(subject, target, direction, padding)`: Snaps objects to edges (Top, Bottom, North, South, East, West, NW, NE, SW, SE).
 
 - Mesh settings tools:
   - `list_mesh_settings(actor_or_mesh_path, contains="", limit=120)`
@@ -332,9 +345,10 @@ The pipeline already extracts focused diagnostics and may append Unreal log tail
 - Ensure class path format resolves as `/Script/<UE_PROJECT_NAME>.<ClassName>`
 
 ### Orchestrate mode behavior to know
+- **Intent Analysis**: The orchestrator uses a hybrid of LLM analysis and robust Regex heuristics to classify user prompts (e.g., "Create a file" vs "Place an actor").
+- **State Logs**: Real-time `[Intent]` classification is logged to the terminal for debugging.
 - If editor is open and `ORCH_ENABLE_LIVE_CODING=true`, it first tries compile-through-live-coding.
 - If that fails, it falls back to close editor -> headless compile -> relaunch -> spawn.
-- `--dry-run` is ignored for `--orchestrate` by design.
 
 ## Development Notes
 
@@ -346,6 +360,20 @@ Minimal process:
 3. Decorate function(s) with `@mcp.tool()`
 4. Import that module in `unreal_mcp/tools/__init__.py`
 5. Restart server and verify tool registration
+
+## Best Practice: Semantic Blueprints
+
+Instead of providing raw coordinates in your prompts, use **Semantic Blueprints** in `data/blueprints/`. 
+
+**Example Blueprint Style:**
+```markdown
+# My Tower
+1. Spawn floor.
+2. Spawn wall. Snap to North edge of floor.
+3. Spawn stairs. Snap to Southwest corner of floor.
+```
+
+The system will use **RAG** to find these instructions and the **Alignment Tools** to perform precise bounding-box math, completely eliminating AI-math hallucinations.
 
 ## Security Notes
 

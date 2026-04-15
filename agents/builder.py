@@ -24,6 +24,7 @@ from agents.builder_prompts import BUILDER_SYSTEM, BUILDER_REFINER, BUILDER_PLAN
 from unreal_mcp.tools.spawning import spawn_actor_internal
 from unreal_mcp.tools.transform import set_actor_scale, set_actor_rotation
 from unreal_mcp.tools.mesh_settings import set_mesh_settings, sync_mesh_settings
+from unreal_mcp.tools.alignment import snap_to_actor
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -194,7 +195,7 @@ def _sanitize_build_plan(plan: dict) -> Tuple[dict, int]:
     if not isinstance(plan, dict):
         return {"name": "Unknown", "description": "", "steps": []}, 0
 
-    actions_allowed = {"spawn", "scale", "rotate", "mesh_settings", "sync_mesh_settings"}
+    actions_allowed = {"spawn", "scale", "rotate", "mesh_settings", "sync_mesh_settings", "snap_to_actor"}
     source_steps = plan.get("steps", [])
     if not isinstance(source_steps, list):
         source_steps = []
@@ -240,6 +241,15 @@ def _sanitize_build_plan(plan: dict) -> Tuple[dict, int]:
             out["yaw"] = _coerce_number(step.get("yaw", 0.0), 0.0)
             out["roll"] = _coerce_number(step.get("roll", 0.0), 0.0)
             if not out["ref"]:
+                dropped += 1
+                continue
+
+        elif action == "snap_to_actor":
+            out["subject"] = str(step.get("subject", "")).strip()
+            out["target"] = str(step.get("target", "")).strip()
+            out["direction"] = str(step.get("direction", "top")).strip().lower()
+            out["padding"] = _coerce_number(step.get("padding", 0.0), 0.0)
+            if not out["subject"] or not out["target"]:
                 dropped += 1
                 continue
 
@@ -514,6 +524,23 @@ async def _execute_build_plan(plan: dict, status_callback=None) -> str:
                     success += 1
                 else:
                     await log(f"[{i+1}/{len(steps)}] SKIP: no path for '{ref}'")
+                    errors += 1
+
+            elif action == "snap_to_actor":
+                subject_ref = step.get("subject", "")
+                target_ref = step.get("target", "")
+                direction = step.get("direction", "top")
+                padding = step.get("padding", 0.0)
+                
+                subject_path = spawned.get(subject_ref, "")
+                target_path = spawned.get(target_ref, "")
+                
+                if subject_path and target_path:
+                    res = await snap_to_actor(subject_path, target_path, direction, padding)
+                    await log(f"[{i+1}/{len(steps)}] {res}")
+                    success += 1
+                else:
+                    await log(f"[{i+1}/{len(steps)}] SKIP: missing path for subject '{subject_ref}' or target '{target_ref}'")
                     errors += 1
 
             await asyncio.sleep(0.1)

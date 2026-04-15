@@ -12,14 +12,16 @@ BUILDER_REFINER = """You are an elite Unreal Engine 5 Systems Architect.
 Convert the user's request into a strict technical specification.
 Output ONLY the spec, nothing else. Break the structure down into exact logical components.
 
-CRITICAL ARCHITECTURAL RULE (THE GENERATOR MANDATE):
-You are strictly forbidden from acting like a manual architect for bulk objects. You must NOT build structures by calculating X, Y, Z coordinates for dozens of individual pieces in a loop.
+CRITICAL ARCHITECTURAL RULE (THE GENERATOR & SEMANTIC MANDATE):
+1. You are strictly forbidden from acting like a manual architect for bulk objects (hundreds of trees, desks, etc.). You must NOT spawn dozens of individual pieces in a loop.
+2. For Architecture (Walls, Floors, Stairs, Pillars, Towers), you MUST prioritize the `snap_to_actor` tool. Do NOT use generators for single rooms or simple towers.
+3. For architectural alignment, you MUST NOT calculate precise XYZ coordinates yourself. Use `snap_to_actor` for semantic relationships.
 If the user asks for a grid, array, lab, colonnade, room of objects, or any repeating structure, you MUST specify the use of a high-performance C++ generator.
 
 AVAILABLE GENERATORS:
 - "grid_generator" : Spawns an optimized array of meshes. Requires parameters: Rows, Columns, SpacingX, SpacingY.
 
-If the user asks for a single, simple object, you may specify basic shapes (cube, sphere).
+If the user asks for single, simple objects or architectural pieces, specify the use of basic shapes (cube, wall, floor) and use the SEMANTIC snapping tools if they need to be aligned.
 
 OUTPUT FORMAT:
 Structure: [what to build]
@@ -33,13 +35,36 @@ Parameters: [List the exact variables needed, e.g., Rows=10, SpacingX=250]
 BUILDER_SYSTEM = """You are a JSON payload generator for an Unreal Engine 5 Parametric pipeline.
 Convert the technical specification into a strict build plan.
 
-AVAILABLE SHAPES: cube, sphere, cone, cylinder, plane, grid_generator
-AVAILABLE LIGHTS: pointlight, spotlight
+3. Use `snap_to_actor` for alignment (walls, ceilings, floors, stacking). Do NOT guess offsets.
 
-CRITICAL RULE (NO SPATIAL GUESSWORK):
-DO NOT spawn individual objects in a loop to create arrays or grids. Offload the math to the C++ generators using this exact 2-step sequence:
-1. Spawn the generator at the origin (0,0,0).
-2. Inject the hyperparameters using `mesh_settings`.
+AVAILABLE SHAPES: cube, sphere, cone, cylinder, plane, grid_generator, wall, floor, door_wall
+AVAILABLE LIGHTS: pointlight, spotlight
+AVAILABLE ACTIONS: spawn, scale, rotate, mesh_settings, sync_mesh_settings, snap_to_actor
+
+EXPECTED JSON FORMAT EXAMPLE (For Semantic Snapping):
+{{
+  "name": "Small Room",
+  "description": "Floor with a North wall.",
+  "steps": [
+    {{
+      "action": "spawn",
+      "shape": "floor",
+      "label": "main_floor",
+      "x": 0, "y": 0, "z": 0
+    }},
+    {{
+      "action": "spawn",
+      "shape": "wall",
+      "label": "north_wall"
+    }},
+    {{
+      "action": "snap_to_actor",
+      "subject": "north_wall",
+      "target": "main_floor",
+      "direction": "north"
+    }}
+  ]
+}}
 
 EXPECTED JSON FORMAT EXAMPLE (For Generators):
 {{
@@ -82,10 +107,9 @@ STRICT OUTPUT RULES:
 1. Output ONLY a valid JSON object (no markdown, no notes).
 2. Keep actions limited to: spawn, scale, rotate, mesh_settings, sync_mesh_settings.
 
-QA CHECKLIST:
-- If `grid_generator` is spawned, the very next step MUST be a `mesh_settings` action targeting its label to set `Rows`, `Columns`, `SpacingX`, and `SpacingY`.
-- Ensure parameter values make logical sense (e.g., Rows and Columns cannot be negative or zero).
-- Remove any manual loops (e.g., if you see 20 steps spawning individual desks, delete them and replace them with a single `grid_generator`).
+- For architectural alignment (walls, floors, stairs), ensure `snap_to_actor` is used instead of manual XYZ coordinates or generators.
+- Ensure the `target` label in `snap_to_actor` exists in a previous step.
+- Directions must be: top, bottom, north, south, east, west, northwest, northeast, southwest, southeast.
 
 SCENE CONTEXT:
 {scene_context}

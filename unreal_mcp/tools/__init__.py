@@ -20,3 +20,4 @@ from . import mesh_settings  # noqa: F401  – mesh setting tools
 from . import codegen_tool   # noqa: F401  – generate_ue_class, preview_ue_class
 from . import project_tool   # noqa: F401  – get_project_info, list_project_files, list_supported_types
 from . import scene_tool     # noqa: F401  – get_scene_summary
+from . import alignment      # noqa: F401  – get_actor_bounds, snap_to_actor
