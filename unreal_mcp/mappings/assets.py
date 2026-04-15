@@ -15,6 +15,10 @@ ASSET_MAP: dict[str, str] = {
     "cylinder": "/Engine/BasicShapes/Cylinder.Cylinder",
     "cone":     "/Engine/BasicShapes/Cone.Cone",
     "plane":    "/Engine/BasicShapes/Plane.Plane",
+    "wall":     "/Game/StarterContent/Architecture/Wall_400x400.Wall_400x400",
+    "floor":    "/Game/StarterContent/Architecture/Floor_400x400.Floor_400x400",
+    "door_wall": "/Game/StarterContent/Architecture/Wall_Door_400x400.Wall_Door_400x400",
+    "pillar":   "/Game/StarterContent/Architecture/Pillar_50x500.Pillar_50x500",
 }
 
 

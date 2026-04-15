@@ -44,3 +44,5 @@ ehthumbs.db
 logs/
 
 chroma_db/
+
+.agent/

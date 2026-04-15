@@ -110,16 +110,23 @@ def _extract_word_number(prompt: str) -> int | None:
 def _heuristic_intent(prompt: str) -> OrchestrationIntent:
     low = prompt.lower()
 
-    cpp_markers = (
-        "c++",
-        "cpp",
-        "new class",
-        "create class",
-        "create a class",
-        "create an actor",
-        "create actor",
-    )
-    requires_cpp = any(marker in low for marker in cpp_markers) or bool(
+    # Improved C++ markers using regex for flexibility
+    cpp_patterns = [
+        r"\bc\+\+\b",
+        r"\bcpp\b",
+        r"\bnew\s+class\b",
+        r"\bcreate\s+class\b",
+        r"\bcreate\s+a\s+class\b",
+        r"\bcreate\s+(?:a|an)?\s*(?:new)?\s*actor\b",
+        r"\bgenerate\s+(?:some|the)?\s*code\b",
+        r"\bimplement\b",
+        r"\bheader\b",
+        r"\bsource\b",
+        r"\b\.h\b",
+        r"\b\.cpp\b",
+    ]
+    
+    requires_cpp = any(re.search(pat, low) for pat in cpp_patterns) or bool(
         re.search(r"\bclass\s+[A-Z][A-Za-z0-9_]*\b", prompt)
     )
 
@@ -151,7 +158,11 @@ def _heuristic_intent(prompt: str) -> OrchestrationIntent:
     )
 
 
-async def _analyze_intent(llm, user_prompt: str) -> OrchestrationIntent:
+async def _analyze_intent(llm, user_prompt: str, status_callback=None) -> OrchestrationIntent:
+    async def log(msg: str):
+        if status_callback:
+            await status_callback(msg)
+
     fallback = _heuristic_intent(user_prompt)
     try:
         response = await llm.ainvoke(
@@ -162,7 +173,9 @@ async def _analyze_intent(llm, user_prompt: str) -> OrchestrationIntent:
         )
         raw = _extract_json(response.content or "")
         data = json.loads(raw)
-    except Exception:
+        await log(f"[Intent] LLM classified: cpp={data.get('requires_cpp_generation')} placement={data.get('requires_scene_placement')}")
+    except Exception as e:
+        await log(f"[Intent] LLM analysis failed ({str(e)}). Falling back to heuristics...")
         return fallback
 
     requires_cpp = bool(data.get("requires_cpp_generation", fallback.requires_cpp_generation))
@@ -446,7 +459,7 @@ async def orchestrate_in_ue(
     await log("  Orchestrator Mode")
     await log("============================================================")
 
-    intent = await _analyze_intent(llm, user_prompt)
+    intent = await _analyze_intent(llm, user_prompt, status_callback=status_callback)
     await log(
         "[Intent] "
         f"cpp={intent.requires_cpp_generation} "

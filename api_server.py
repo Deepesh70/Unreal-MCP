@@ -74,10 +74,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     await run_agent(llm, model_label=backend, prompt=user_prompt, interactive=False)
                     result = "Classic Agent execution complete. Check server terminal for details."
                 elif mode == "orchestrate":
-                    # Fallback / Future support for orchestrate if needed
-                    await ws_callback("Orchestrator not natively supported via WS yet. Re-routing to build...")
-                    from agents.builder import build_in_ue
-                    result = await build_in_ue(llm, user_prompt, status_callback=ws_callback)
+                    from agents.orchestrator import orchestrate_in_ue
+                    await ws_callback("Starting Orchestrator (Hybrid Pipeline)...")
+                    result = await orchestrate_in_ue(llm, user_prompt, status_callback=ws_callback)
                 else:
                     # Default: Live Builder
                     from agents.builder import build_in_ue
