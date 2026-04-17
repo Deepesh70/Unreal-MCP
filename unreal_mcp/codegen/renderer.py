@@ -63,9 +63,10 @@ def render_header(schema: UnrealClassSchema) -> str:
         lines.append('\tUPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")')
         lines.append("\tUSceneComponent* Root;")
         lines.append("")
-        lines.append('\tUPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")')
-        lines.append("\tUStaticMeshComponent* BaseMesh;")
-        lines.append("")
+        for comp in schema.procedural_components:
+            lines.append('\tUPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Procedural Assembly")')
+            lines.append(f"\tclass UStaticMeshComponent* {comp.name};")
+            lines.append("")
 
     # Variables
     for var in schema.variables:
@@ -103,6 +104,7 @@ def render_source(schema: UnrealClassSchema) -> str:
     
     lines = []
     lines.append(f'#include "{schema.class_name}.h"')
+    lines.append('#include "UObject/ConstructorHelpers.h"')
     lines.append("")
     
     lines.append(f"{ue_class_name}::{ue_class_name}()")
@@ -115,8 +117,31 @@ def render_source(schema: UnrealClassSchema) -> str:
         lines.append('\tRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));')
         lines.append("\tRootComponent = Root;")
         lines.append("")
-        lines.append('\tBaseMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BaseMesh"));')
-        lines.append("\tBaseMesh->SetupAttachment(RootComponent);")
+        
+        shape_paths = {
+            "Cube": "StaticMesh'/Engine/BasicShapes/Cube.Cube'",
+            "Sphere": "StaticMesh'/Engine/BasicShapes/Sphere.Sphere'",
+            "Cylinder": "StaticMesh'/Engine/BasicShapes/Cylinder.Cylinder'",
+            "Cone": "StaticMesh'/Engine/BasicShapes/Cone.Cone'",
+            "Plane": "StaticMesh'/Engine/BasicShapes/Plane.Plane'"
+        }
+
+        for i, comp in enumerate(schema.procedural_components):
+            asset_path = shape_paths.get(comp.shape, shape_paths["Cube"])
+            lines.append(f'\t// Assemble {comp.name}')
+            lines.append(f'\t{comp.name} = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("{comp.name}"));')
+            lines.append(f'\t{comp.name}->SetupAttachment(RootComponent);')
+            lines.append(f'\t{comp.name}->SetRelativeLocation({comp.location});')
+            lines.append(f'\t{comp.name}->SetRelativeRotation({comp.rotation});')
+            lines.append(f'\t{comp.name}->SetRelativeScale3D({comp.scale});')
+            lines.append("")
+            lines.append(f'\tstatic ConstructorHelpers::FObjectFinder<UStaticMesh> MeshAsset_{i}(TEXT("{asset_path}"));')
+            lines.append(f'\tif (MeshAsset_{i}.Succeeded()) {{')
+            lines.append(f'\t\t{comp.name}->SetStaticMesh(MeshAsset_{i}.Object);')
+            lines.append('\t} else {')
+            lines.append(f'\t\tUE_LOG(LogTemp, Warning, TEXT("Failed to load procedural mesh {asset_path} for {comp.name}"));')
+            lines.append('\t}')
+            lines.append("")
     else:
         lines.append("\tPrimaryComponentTick.bCanEverTick = true;")
     lines.append("")
@@ -166,7 +191,11 @@ def render_source(schema: UnrealClassSchema) -> str:
             if not has_body:
                 if impl.endswith(";"):
                     impl = impl[:-1]
-                impl += "\n{\n}\n"
+                
+                if ret_type != "void":
+                    impl += "\n{\n\treturn {};\n}\n"
+                else:
+                    impl += "\n{\n}\n"
             
             lines.append(impl)
         else:
@@ -174,7 +203,11 @@ def render_source(schema: UnrealClassSchema) -> str:
             if not has_body:
                 if method.endswith(";"):
                     method = method[:-1]
-                method += "\n{\n}\n"
+                # If we couldn't parse the return type but it doesn't start with void
+                if not method.startswith("void"):
+                    method += "\n{\n\treturn {};\n}\n"
+                else:
+                    method += "\n{\n}\n"
             lines.append(method)
             
         lines.append("")

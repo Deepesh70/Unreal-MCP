@@ -29,11 +29,33 @@ from agents.rag_store import retrieve_api_knowledge
 
 def _extract_json(text: str) -> str:
     """Robustly extracts the outermost JSON object from LLM response."""
+    # First, try to extract from markdown codeblocks
+    import re
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if match:
+        return match.group(1)
+        
     start = text.find('{')
-    end = text.rfind('}')
-    if start == -1 or end == -1:
+    if start == -1:
         print(f"  [DEBUG] No JSON found in LLM response: {text[:100]}...")
-        return "{}" 
+        return "{}"
+        
+    # Find matching closing brace by counting
+    brace_count = 0
+    end = -1
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            brace_count += 1
+        elif text[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                end = i
+                break
+                
+    if end == -1:
+        print(f"  [DEBUG] Malformed JSON (unmatched braces): {text[:100]}...")
+        return "{}"
+        
     return text[start:end+1]
 
 
@@ -65,7 +87,7 @@ async def generate_architecture_manifest(llm, refined_spec: str) -> dict:
     1. ONLY generate modules for the explicitly requested classes in the spec. 
     2. DO NOT invent 'Managers', 'Controllers', or auxiliary helper classes. Keep it simple.
     3. If Class A is used by Class B, Class A is a DEPENDENCY.
-    4. DO NOT include AActor or other built-in UE classes in the modules list.
+    4. DO NOT include AActor, UActorComponent, UPrimitiveComponent, UProceduralMeshComponent, or ANY other built-in UE classes in the modules list. ONLY include custom classes you are meant to generate.
     
     OUTPUT ONLY JSON: {"modules": [{"name": "HealthComponent", "dependencies": []}, {"name": "DamageZone", "dependencies": ["HealthComponent"]}]}"""
     
@@ -164,7 +186,8 @@ async def two_phase_run(
                 except ValidationError as ve:
                     # Catch it, append the exact error string to the prompt, and force the LLM to try again
                     error_str = str(ve)
-                    print(f"  [!] ValidationError caught: {error_str}")
+                    print(f"  [!] ValidationError caught: {ve.error_count()} validation error for UnrealClassSchema")
+                    print(f"  [DEBUG RAW JSON]:\n{raw_json}\n")
                     current_error_log = f"Pydantic ValidationError:\n{error_str}\n\nPlease output valid JSON matching the schema."
                     last_error = error_str
                     continue

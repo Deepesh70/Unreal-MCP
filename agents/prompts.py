@@ -39,29 +39,43 @@ You generate a strict JSON manifest that our Python renderer will turn into .h a
 
 CRITICAL C++ SYNTAX RULES:
 1. EXPORT MACRO: You MUST use the '{UE_EXPORT_MACRO}' macro in the class declaration.
-2. INCLUDES: You MUST include "{{class_name}}.generated.h" as the ABSOLUTE LAST include.
+2. INCLUDES: You MUST add "{{class_name}}.generated.h" as the ABSOLUTE LAST item in the "includes" JSON array.
 3. PREFIXES: Use 'A' for Actors (e.g., AMyActor) and 'U' for Components (e.g., UMyComponent).
 4. UNYIELDING CONSTRAINT: You MUST strictly obey the "DYNAMIC API RULES" provided below. You are forbidden from guessing #include paths or constructor syntax.
+5. CRITICAL: You are strictly forbidden from writing component instantiation code (CreateDefaultSubobject, SetupAttachment) inside the constructor_body. The pipeline will generate this automatically based on your procedural_components array. Use constructor_body ONLY for variable initialization or tick settings.
+6. JSON ESCAPING: If you write C++ code containing double quotes inside the JSON (e.g. inside `constructor_body` or `methods`), you MUST escape them (e.g. `TEXT(\\\"Hello\\\")`) to prevent breaking the JSON parser!
+7. CLASS NAME FORMAT: For the `class_name` JSON field, DO NOT include the 'A' or 'U' prefix! Use "ProceduralBed", not "AProceduralBed".
 
 DYNAMIC API RULES:
 {{api_rules}}
 
-OUTPUT FORMAT:
-You must return a raw JSON object exactly matching this schema:
+CRITICAL SCHEMA INSTRUCTIONS:
+You MUST output a valid JSON object matching the UnrealClassSchema. 
+Failure to follow these rules will crash the compiler:
+
+1. 'methods' MUST be a simple list of strings containing the C++ signatures. DO NOT use objects or dictionaries. (e.g., ["void Fire();", "bool IsDead();"])
+2. 'procedural_components' MUST contain the 3D primitives (Cube, Cylinder, etc.) used to build the physical object. 
+3. DO NOT declare 'procedural_components' inside the 'variables' array. The pipeline handles it natively.
+
+EXPECTED JSON FORMAT:
 {{
-  "class_name": "WeaponComponent", // NO 'A' or 'U' prefix
-  "parent_class": "UActorComponent",
-  "includes": ["CoreMinimal.h", "Components/ActorComponent.h"],
+  "class_name": "BedActor",
+  "parent_class": "AActor",
+  "includes": ["CoreMinimal.h", "GameFramework/Actor.h"],
   "variables": [
+     {{ "type": "bool", "name": "IsOccupied", "default_value": "false" }}
+  ],
+  "procedural_components": [
     {{
-      "type": "int32",
-      "name": "AmmoCount",
-      "default_value": "30", // NO JSON GARBAGE. VALID C++ ONLY.
-      "is_component": false
+      "name": "BedFrame",
+      "shape": "Cube",
+      "location": "FVector(0.f, 0.f, 10.f)",
+      "rotation": "FRotator::ZeroRotator",
+      "scale": "FVector(2.0f, 1.0f, 0.2f)"
     }}
   ],
-  "constructor_body": "PrimaryComponentTick.bCanEverTick = false;",
-  "methods": ["void FireWeapon();", "void Reload();"]
+  "constructor_body": "",
+  "methods": ["void GenerateBedProceduralMesh();"]
 }}
 
 TECHNICAL SPECIFICATION:
