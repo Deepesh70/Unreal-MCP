@@ -46,21 +46,22 @@ CRITICAL C++ SYNTAX RULES:
 DYNAMIC API RULES:
 {{api_rules}}
 
-SCHEMA:
+OUTPUT FORMAT:
+You must return a raw JSON object exactly matching this schema:
 {{
-  "class_name": "string (PascalCase, no A/U prefix)",
-  "parent_class": "AActor|UActorComponent|APawn|ACharacter",
+  "class_name": "WeaponComponent", // NO 'A' or 'U' prefix
+  "parent_class": "UActorComponent",
+  "includes": ["CoreMinimal.h", "Components/ActorComponent.h"],
   "variables": [
-    {{"name": "string", "type": "string", "default": "0.0f", "category": "{UE_MODULE_NAME}", "editable": true, "tooltip": "string"}}
+    {{
+      "type": "int32",
+      "name": "AmmoCount",
+      "default_value": "30", // NO JSON GARBAGE. VALID C++ ONLY.
+      "is_component": false
+    }}
   ],
-  "functions": [
-    {{"name": "string", "return_type": "void", "params": [{{"name":"string","type":"string"}}], "body": "C++ logic only", "callable": true}}
-  ],
-  "tick_enabled": false,
-  "tick_body": "C++ code",
-  "begin_play_body": "C++ code",
-  "constructor_body": "C++ code",
-  "extra_includes": ["Components/BoxComponent.h", "GameFramework/Character.h"]
+  "constructor_body": "PrimaryComponentTick.bCanEverTick = false;",
+  "methods": ["void FireWeapon();", "void Reload();"]
 }}
 
 TECHNICAL SPECIFICATION:

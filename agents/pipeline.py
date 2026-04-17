@@ -17,7 +17,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 # Internal Imports
 from agents.prompts import REFINER_SYSTEM, GENERATOR_SYSTEM
-from unreal_mcp.codegen.schema import Blueprint
+from unreal_mcp.codegen.schema import UnrealClassSchema
+from pydantic import ValidationError
 from unreal_mcp.codegen.renderer import render_both
 from unreal_mcp.codegen.file_writer import write_class_files
 from unreal_mcp.codegen.sorter import resolve_build_order
@@ -76,8 +77,8 @@ async def generate_architecture_manifest(llm, refined_spec: str) -> dict:
     return json.loads(raw)
 
 
-async def generate_blueprint_json(llm, targeted_prompt: str) -> dict:
-    """Phase 3: Generate a specific class JSON payload with context."""
+async def generate_blueprint_raw(llm, targeted_prompt: dict) -> str:
+    """Phase 3: Generate a specific class JSON payload with context (returns raw string)."""
     # Use explicit replacement instead of str.format() because the prompt
     # intentionally contains literal braces like {class_name} for instruction text.
     system = GENERATOR_SYSTEM.replace(
@@ -93,11 +94,7 @@ async def generate_blueprint_json(llm, targeted_prompt: str) -> dict:
     ])
     
     raw = _extract_json(response.content)
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"  [!] Blueprint JSON Parse Error: {e}\nRaw: {raw}")
-        raise
+    return raw
 
 
 async def two_phase_run(
@@ -159,69 +156,25 @@ async def two_phase_run(
 
             try:
                 # 1. Generate JSON
-                data = await generate_blueprint_json(llm, prompt_data)
-                
-                # --- BRUTAL DIAGNOSTIC: See what the LLM is actually doing ---
-                if not isinstance(data, dict):
-                    raise ValueError(f"LLM output must be a JSON object, got: {type(data).__name__}")
-
-                print(f"  [DEBUG] Keys received from LLM: {list(data.keys())}")
-                
-                # If the LLM used 'className' instead of 'class_name', fix it manually
-                if 'className' in data:
-                    data['class_name'] = data.pop('className')
-                if 'name' in data and 'class_name' not in data:
-                    data['class_name'] = data.pop('name')
-                if 'ClassName' in data and 'class_name' not in data:
-                    data['class_name'] = data.pop('ClassName')
-                
-                # Force the class_name if it's still missing
-                if 'class_name' not in data or not data['class_name']:
-                    print(f"  [FIX] Forcing class_name to: {class_name}")
-                    data['class_name'] = class_name
-                else:
-                    # Keep module boundaries strict: one loop iteration == one target class.
-                    if str(data['class_name']) != class_name:
-                        print(f"  [FIX] Rewriting class_name '{data['class_name']}' -> '{class_name}'")
-                    data['class_name'] = class_name
-
-                # Ensure parent class exists for schema validation.
-                if 'parent_class' not in data or not data.get('parent_class'):
-                    data['parent_class'] = 'AActor'
-
-                # Normalize common include mistakes that break UHT/compile.
-                includes = data.get('extra_includes', [])
-                if isinstance(includes, list):
-                    fixed_includes = []
-                    for inc in includes:
-                        inc_text = str(inc).strip()
-                        if inc_text == 'GameFramework/ActorComponent.h':
-                            inc_text = 'Components/ActorComponent.h'
-                        if inc_text and inc_text not in fixed_includes:
-                            fixed_includes.append(inc_text)
-                    data['extra_includes'] = fixed_includes
-
-                # Normalize common pointer mistakes in templated actor arrays.
-                for var in data.get('variables', []) if isinstance(data.get('variables', []), list) else []:
-                    if isinstance(var, dict) and isinstance(var.get('type'), str):
-                        var['type'] = var['type'].replace('TArray<AActor>', 'TArray<AActor*>')
-                for fn in data.get('functions', []) if isinstance(data.get('functions', []), list) else []:
-                    if isinstance(fn, dict) and isinstance(fn.get('return_type'), str):
-                        fn['return_type'] = fn['return_type'].replace('TArray<AActor>', 'TArray<AActor*>')
-                    params = fn.get('params', []) if isinstance(fn, dict) else []
-                    if isinstance(params, list):
-                        for p in params:
-                            if isinstance(p, dict) and isinstance(p.get('type'), str):
-                                p['type'] = p['type'].replace('TArray<AActor>', 'TArray<AActor*>')
+                raw_json = await generate_blueprint_raw(llm, prompt_data)
                 
                 # 2. Validate schema + render C++
-                blueprint = Blueprint(**data)
-                header_code, source_code = render_both(blueprint)
+                try:
+                    schema = UnrealClassSchema.model_validate_json(raw_json)
+                except ValidationError as ve:
+                    # Catch it, append the exact error string to the prompt, and force the LLM to try again
+                    error_str = str(ve)
+                    print(f"  [!] ValidationError caught: {error_str}")
+                    current_error_log = f"Pydantic ValidationError:\n{error_str}\n\nPlease output valid JSON matching the schema."
+                    last_error = error_str
+                    continue
+                    
+                header_code, source_code = render_both(schema)
 
                 # 3. Persist files (optional)
                 if write_files:
                     h_path, cpp_path = write_class_files(
-                        class_name=blueprint.class_name,
+                        class_name=schema.class_name,
                         header_code=header_code,
                         source_code=source_code,
                     )
@@ -233,7 +186,7 @@ async def two_phase_run(
                     print(f" [SUCCESS] Module {class_name} written to disk.")
                     print(" -> SKIP: Headless compiler bypassed. Alt-Tab to Unreal and press Ctrl+Alt+F11 to Live Code.")
                     # Pass header context forward so multi-class generation remains coherent.
-                    code_context += f"\n// {blueprint.class_name}.h\n{header_code[:4000]}\n"
+                    code_context += f"\n// {schema.class_name}.h\n{header_code[:4000]}\n"
                     success_this_class = True
                     break # Exit the retry loop for this class immediately
 
@@ -249,10 +202,10 @@ async def two_phase_run(
                 # When compile validation is disabled (live coding path), still
                 # pass header context forward so multi-class generation remains coherent.
                 if write_files and (not validate_compile):
-                    code_context += f"\n// {blueprint.class_name}.h\n{header_code[:4000]}\n"
+                    code_context += f"\n// {schema.class_name}.h\n{header_code[:4000]}\n"
                 elif write_files and validate_compile:
                     # Add successful module header to future class context only after validation passes.
-                    code_context += f"\n// {blueprint.class_name}.h\n{header_code[:4000]}\n"
+                    code_context += f"\n// {schema.class_name}.h\n{header_code[:4000]}\n"
 
                 success_this_class = True
                 print(f"  [OK] Module {class_name} built successfully.")
@@ -264,8 +217,8 @@ async def two_phase_run(
                 print(f"  [!] Error Message: {str(e)}")
                 last_error = str(e)
                 current_error_log = str(e)
-                if 'data' in locals():
-                    print(f"  [!] RAW DATA RECEIVED FROM LLM:\n{json.dumps(data, indent=2)}")
+                if 'raw_json' in locals():
+                    print(f"  [!] RAW DATA RECEIVED FROM LLM:\n{raw_json}")
                 # Retry with explicit validation failure feedback.
                 continue
 

@@ -46,3 +46,5 @@ logs/
 chroma_db/
 
 .agent/
+*.txt
+graphify-out/

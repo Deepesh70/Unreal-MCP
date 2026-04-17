@@ -1,117 +1,167 @@
 """
-Template Renderer — Renders Blueprint schemas into C++ code via Jinja2.
-
-Takes a validated Blueprint object, resolves types, and renders
-the .h and .cpp templates into strings.
+Template Renderer — Renders Blueprint schemas into C++ code.
+Bypasses Jinja2 templates entirely for strict schema formatting.
 """
 
 from __future__ import annotations
-from pathlib import Path
-from jinja2 import Environment, FileSystemLoader, ChainableUndefined
-
-from unreal_mcp.codegen.schema import Blueprint
-from unreal_mcp.codegen.type_mapper import resolve_type, get_required_includes
+import re
+from unreal_mcp.codegen.schema import UnrealClassSchema
 from unreal_mcp.config.settings import UE_PROJECT_NAME
-
-
-# ── Template directory ───────────────────────────────────────────────
-_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
-
 
 def _build_project_api(project_name: str) -> str:
     """Build the PROJECT_API macro, e.g. MYPROJECT_API."""
     return f"{project_name.upper()}_API"
 
+def render_header(schema: UnrealClassSchema) -> str:
+    """Render the .h header file for an UnrealClassSchema using strict string formatting."""
+    api_macro = _build_project_api(UE_PROJECT_NAME)
+    prefix = "A" if schema.parent_class.startswith("A") else "U"
+    ue_class_name = f"{prefix}{schema.class_name}"
+    
+    lines = []
+    lines.append("#pragma once")
+    lines.append("")
+    lines.append('#include "CoreMinimal.h"')
+    
+    for inc in schema.includes:
+        inc = inc.strip()
+        if not inc or ".generated.h" in inc:
+            continue
+        if inc.startswith("#include"):
+            lines.append(inc)
+        else:
+            lines.append(f'#include "{inc}"')
+            
+    lines.append(f'#include "{schema.class_name}.generated.h"')
+    lines.append("")
+    lines.append("UCLASS()")
+    lines.append(f"class {api_macro} {ue_class_name} : public {schema.parent_class}")
+    lines.append("{")
+    lines.append("\tGENERATED_BODY()")
+    lines.append("")
+    lines.append("public:")
+    lines.append(f"\t{ue_class_name}();")
+    lines.append("")
+    is_actor = schema.parent_class.startswith("A")
+    
+    lines.append("protected:")
+    lines.append("\tvirtual void BeginPlay() override;")
+    lines.append("")
+    lines.append("public:")
+    if is_actor:
+        lines.append("\tvirtual void Tick(float DeltaTime) override;")
+    else:
+        lines.append("\tvirtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;")
+    lines.append("")
+    
+    # Variables
+    for var in schema.variables:
+        lines.append('\tUPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default")')
+        lines.append(f"\t{var.type} {var.name};")
+        lines.append("")
+        
+    # Methods (extract signatures from implementations)
+    for method in schema.methods:
+        method = method.strip()
+        # Find everything before the first opening brace as the signature
+        idx = method.find("{")
+        if idx != -1:
+            sig = method[:idx].strip()
+            if not sig.endswith(";"):
+                sig += ";"
+        else:
+            sig = method if method.endswith(";") else method + ";"
+        # For methods, remove trailing semicolon to make signature clean
+        if sig.endswith(";"):
+            sig = sig[:-1]
+            
+        lines.append(f"\tUFUNCTION(BlueprintCallable, Category = \"Default\")")
+        lines.append(f"\t{sig};")
+        lines.append("")
 
-def _prepare_context(blueprint: Blueprint) -> dict:
-    """
-    Convert a Blueprint schema into the template rendering context.
-
-    Resolves all friendly types → UE types and collects required includes.
-    """
-    # Resolve variable types
-    resolved_vars = []
-    all_types = []
-    for var in blueprint.variables:
-        ue_type = resolve_type(var.type)
-        all_types.append(var.type)
-        resolved_vars.append({
-            "name": var.name,
-            "cpp_type": ue_type.cpp_type,
-            "default_value": var.default or ue_type.default,
-            "category": var.category,
-            "editable": var.editable,
-            "tooltip": var.tooltip,
-        })
-
-    # Resolve function types
-    resolved_funcs = []
-    for func in blueprint.functions:
-        ret_type = resolve_type(func.return_type)
-        all_types.append(func.return_type)
-
-        params = []
-        for p in func.params:
-            p_type = resolve_type(p.type)
-            all_types.append(p.type)
-            params.append(f"{p_type.cpp_type} {p.name}")
-
-        resolved_funcs.append({
-            "name": func.name,
-            "cpp_return_type": ret_type.cpp_type,
-            "param_string": ", ".join(params) if params else "",
-            "body": func.body,
-            "callable": func.callable,
-            "description": func.description,
-        })
-
-    # Collect all required includes from types
-    type_includes = get_required_includes(all_types)
-    extra_includes = list(set(type_includes + blueprint.extra_includes))
-
-    return {
-        "class_name": blueprint.class_name,
-        "parent_class": blueprint.parent_class,
-        "description": blueprint.description or f"{blueprint.class_name} — generated by Unreal MCP",
-        "project_api": _build_project_api(UE_PROJECT_NAME),
-        "variables": resolved_vars,
-        "functions": resolved_funcs,
-        "tick_enabled": blueprint.tick_enabled,
-        "tick_body": blueprint.tick_body,
-        "begin_play_body": blueprint.begin_play_body,
-        "constructor_body": blueprint.constructor_body,
-        "extra_includes": extra_includes,
-    }
-
-
-def render_header(blueprint: Blueprint) -> str:
-    """Render the .h header file for a Blueprint."""
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        keep_trailing_newline=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-        undefined=ChainableUndefined,
-    )
-    template = env.get_template("base_actor.h.j2")
-    context = _prepare_context(blueprint)
-    return template.render(**context)
+    lines.append("};")
+    return "\n".join(lines)
 
 
-def render_source(blueprint: Blueprint) -> str:
-    """Render the .cpp source file for a Blueprint."""
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        keep_trailing_newline=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-        undefined=ChainableUndefined,
-    )
-    template = env.get_template("base_actor.cpp.j2")
-    context = _prepare_context(blueprint)
-    return template.render(**context)
+def render_source(schema: UnrealClassSchema) -> str:
+    """Render the .cpp source file for an UnrealClassSchema."""
+    prefix = "A" if schema.parent_class.startswith("A") else "U"
+    ue_class_name = f"{prefix}{schema.class_name}"
+    
+    lines = []
+    lines.append(f'#include "{schema.class_name}.h"')
+    lines.append("")
+    
+    lines.append(f"{ue_class_name}::{ue_class_name}()")
+    lines.append("{")
+    is_actor = schema.parent_class.startswith("A")
+    if is_actor:
+        lines.append("\tPrimaryActorTick.bCanEverTick = true;")
+    else:
+        lines.append("\tPrimaryComponentTick.bCanEverTick = true;")
+    lines.append("")
+    for var in schema.variables:
+        if var.default_value:
+            lines.append(f"\t{var.name} = {var.default_value};")
+            
+    if schema.constructor_body:
+        # Indent constructor body
+        body_lines = schema.constructor_body.strip().split("\n")
+        for bl in body_lines:
+            lines.append(f"\t{bl}")
+            
+    lines.append("}")
+    lines.append("")
+    
+    lines.append(f"void {ue_class_name}::BeginPlay()")
+    lines.append("{")
+    lines.append("\tSuper::BeginPlay();")
+    lines.append("}")
+    lines.append("")
+    
+    if is_actor:
+        lines.append(f"void {ue_class_name}::Tick(float DeltaTime)")
+        lines.append("{")
+        lines.append("\tSuper::Tick(DeltaTime);")
+        lines.append("}")
+    else:
+        lines.append(f"void {ue_class_name}::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)")
+        lines.append("{")
+        lines.append("\tSuper::TickComponent(DeltaTime, TickType, ThisTickFunction);")
+        lines.append("}")
+    lines.append("")
+    
+    for method in schema.methods:
+        method = method.strip()
+        # If the method string ends with a semicolon, it's just a signature. We must give it an empty body.
+        has_body = "{" in method
+        
+        match = re.match(r'^([\w\s\*&<>]+)\s+(\w+)\s*\(', method)
+        if match:
+            ret_type = match.group(1).strip()
+            name = match.group(2).strip()
+            # Replace the signature to include ClassName::
+            impl = method.replace(f"{ret_type} {name}(", f"{ret_type} {ue_class_name}::{name}(", 1)
+            
+            if not has_body:
+                if impl.endswith(";"):
+                    impl = impl[:-1]
+                impl += "\n{\n}\n"
+            
+            lines.append(impl)
+        else:
+            # Fallback
+            if not has_body:
+                if method.endswith(";"):
+                    method = method[:-1]
+                method += "\n{\n}\n"
+            lines.append(method)
+            
+        lines.append("")
+        
+    return "\n".join(lines)
 
 
-def render_both(blueprint: Blueprint) -> tuple[str, str]:
+def render_both(schema: UnrealClassSchema) -> tuple[str, str]:
     """Render both .h and .cpp files. Returns (header_code, source_code)."""
-    return render_header(blueprint), render_source(blueprint)
+    return render_header(schema), render_source(schema)

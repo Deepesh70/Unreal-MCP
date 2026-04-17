@@ -85,7 +85,7 @@ def retrieve_api_knowledge(query: str, k: int = 2) -> str:
         
     chunks = []
     for doc, score in results:
-        if score > 0.1:
+        if score > 0.5:
             print(f" [RAG] Retrieved relevant chunk: {doc.metadata.get('chunk_title')} from {doc.metadata.get('source')} (Score: {score:.2f})")
             chunks.append(doc.page_content)
     
