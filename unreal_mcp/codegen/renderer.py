@@ -32,6 +32,10 @@ def render_header(schema: UnrealClassSchema) -> str:
         else:
             lines.append(f'#include "{inc}"')
             
+    if schema.parent_class.startswith("A"):
+        lines.append('#include "Components/SceneComponent.h"')
+        lines.append('#include "Components/StaticMeshComponent.h"')
+            
     lines.append(f'#include "{schema.class_name}.generated.h"')
     lines.append("")
     lines.append("UCLASS()")
@@ -54,6 +58,15 @@ def render_header(schema: UnrealClassSchema) -> str:
         lines.append("\tvirtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;")
     lines.append("")
     
+    if is_actor:
+        lines.append("\t// --- MANDATORY PHYSICAL COMPONENTS ---")
+        lines.append('\tUPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")')
+        lines.append("\tUSceneComponent* Root;")
+        lines.append("")
+        lines.append('\tUPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")')
+        lines.append("\tUStaticMeshComponent* BaseMesh;")
+        lines.append("")
+
     # Variables
     for var in schema.variables:
         lines.append('\tUPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default")')
@@ -97,6 +110,13 @@ def render_source(schema: UnrealClassSchema) -> str:
     is_actor = schema.parent_class.startswith("A")
     if is_actor:
         lines.append("\tPrimaryActorTick.bCanEverTick = true;")
+        lines.append("")
+        lines.append("\t// --- MANDATORY PHYSICAL INJECTION ---")
+        lines.append('\tRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));')
+        lines.append("\tRootComponent = Root;")
+        lines.append("")
+        lines.append('\tBaseMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BaseMesh"));')
+        lines.append("\tBaseMesh->SetupAttachment(RootComponent);")
     else:
         lines.append("\tPrimaryComponentTick.bCanEverTick = true;")
     lines.append("")
