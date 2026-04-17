@@ -25,52 +25,79 @@ def get_vectorstore():
     os.makedirs(BLUEPRINTS_DIR, exist_ok=True)
     os.makedirs(CHROMA_DB_DIR, exist_ok=True)
 
-    # Load all markdown blueprints from disk
+    # Load all markdown knowledge files from disk
     docs = []
-    for filepath in glob.glob(os.path.join(BLUEPRINTS_DIR, "*.md")):
+    # We look in both blueprints and the new api_knowledge file
+    knowledge_files = glob.glob(os.path.join(BLUEPRINTS_DIR, "*.md"))
+    api_knowledge_path = os.path.join(BASE_DIR, "data", "ue_api_knowledge.md")
+    if os.path.exists(api_knowledge_path):
+        knowledge_files.append(api_knowledge_path)
+
+    for filepath in knowledge_files:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
             filename = os.path.basename(filepath)
-            docs.append(Document(page_content=content, metadata={"source": filename}))
+            
+            # CHUNKING STRATEGY: Split by H2 headers (## ) to keep components isolated
+            chunks = content.split("\n## ")
+            for i, chunk in enumerate(chunks):
+                if not chunk.strip():
+                    continue
+                
+                # Re-add the header prefix if it's not the first (pre-header) chunk
+                processed_chunk = chunk if i == 0 and not content.startswith("## ") else "## " + chunk
+                
+                # Extract the title for metadata if possible
+                title = processed_chunk.split("\n")[0].replace("#", "").strip()
+                
+                docs.append(Document(
+                    page_content=processed_chunk, 
+                    metadata={"source": filename, "chunk_title": title}
+                ))
 
     if not docs:
-        print(" [RAG] No blueprints found in data/blueprints. Vector DB will be empty.")
+        print(" [RAG] No knowledge found in data/. Vector DB will be empty.")
         _vectorstore = Chroma(
-            collection_name="blueprints",
+            collection_name="unreal_knowledge",
             embedding_function=embeddings,
             persist_directory=CHROMA_DB_DIR
         )
         return _vectorstore
 
-    # If Chroma DB already exists on disk and is populated, we could just load it,
-    # but for this scale (a few files), we can just re-init it to ensure it's fresh.
-    print(f" [RAG] Reloading {len(docs)} blueprints into Chroma vector database...")
+    print(f" [RAG] Reloading {len(docs)} knowledge chunks into Chroma vector database...")
     _vectorstore = Chroma.from_documents(
         documents=docs,
         embedding=embeddings,
         persist_directory=CHROMA_DB_DIR,
-        collection_name="blueprints"
+        collection_name="unreal_knowledge"
     )
     return _vectorstore
 
 
-def retrieve_blueprint(user_query: str) -> str:
-    """Uses Vector Math to find the single most semantically relevant blueprint."""
+def retrieve_api_knowledge(query: str, k: int = 2) -> str:
+    """Uses Vector Math to find the most relevant API rules or blueprints."""
     store = get_vectorstore()
     
-    # K=1 because we just want the absolute best matching blueprint (if any)
-    results = store.similarity_search_with_relevance_scores(user_query, k=1)
+    results = store.similarity_search_with_relevance_scores(query, k=k)
     
     if not results:
         return ""
         
-    doc, score = results[0]
+    chunks = []
+    for doc, score in results:
+        if score > 0.1:
+            print(f" [RAG] Retrieved relevant chunk: {doc.metadata.get('chunk_title')} from {doc.metadata.get('source')} (Score: {score:.2f})")
+            chunks.append(doc.page_content)
     
-    # We only inject if it's actually somewhat relevant (score > 0.0 means it's mathematically similar at all)
-    # Cosine distance scores vary wildly, but generally anything highly negative is irrelevant
-    if score > 0.1:
-        print(f" [RAG] Found highly relevant blueprint: {doc.metadata.get('source')} (Score: {score:.2f})")
-        return doc.page_content
-    else:
-        print(f" [RAG] No highly relevant blueprint found (Best score: {score:.2f} for {doc.metadata.get('source')})")
-        return ""
+    return "\n\n---\n\n".join(chunks)
+
+
+def retrieve_blueprint(query: str, k: int = 1) -> str:
+    """Alias for retrieve_api_knowledge, typically used for geometry blueprints."""
+    return retrieve_api_knowledge(query, k=k)
+
+
+if __name__ == "__main__":
+    print(" [RAG] Manually triggering Vector Database build/reload...")
+    get_vectorstore()
+    print(" [RAG] Build complete. Knowledge is now indexed in data/chroma_db/")

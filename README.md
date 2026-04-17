@@ -9,6 +9,7 @@ The repository supports three practical workflows:
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [What This Project Does](#what-this-project-does)
 - [Repository Layout](#repository-layout)
 - [How It Works](#how-it-works)
@@ -21,6 +22,14 @@ The repository supports three practical workflows:
 - [Troubleshooting](#troubleshooting)
 - [Development Notes](#development-notes)
 - [Security Notes](#security-notes)
+
+## Quick Start
+
+1.  **Install dependencies**: `pip install -r requirements.txt`
+2.  **Configure paths**: Copy `.env.example` to `.env` and set your `UE_ENGINE_PATH` and `UE_PROJECT_ROOT`.
+3.  **Build RAG Database**: `python -m agents.rag_store`
+4.  **Run Agent**: `python agent.py groq --build -i` (Best for scene building)
+5.  **Run C++ Gen**: `python agent.py groq --two-phase --prompt "Create a health component"`
 
 ## What This Project Does
 
@@ -60,8 +69,8 @@ Agent logic:
 - `agents/groq_agent.py`, `agents/ollama_agent.py`, `agents/gemini_agent.py`: backend factories
 
 Project Assets:
-- `data/blueprints/`: Semantic instructions/blueprints (Markdown) used for complex builds.
 - `unreal_mcp/mappings/`: Friendly-name to Unreal path mappings for common assets.
+- `data/ue_api_knowledge.md`: The "Bible" of the project. Contains strict C++ syntax rules for Unreal components.
 
 ## How It Works
 
@@ -85,6 +94,7 @@ Project Assets:
 - `--build`: scene plan + live execution
 - `--two-phase`: C++ generation with optional headless compile validation
 - `--orchestrate`: intent analysis + compile strategy + placement
+- `data/ue_api_knowledge.md`: Dynamic RAG injection of C++ API facts.
 - default mode: classic tool-calling agent
 
 ## Prerequisites
@@ -203,7 +213,8 @@ Options:
 - `--interactive` / `-i`
 - `--prompt "..."`
 - `--dry-run` (for `--two-phase`; ignored in `--orchestrate`)
-- `--level "..."` (used by build/orchestrate)
+- `--no-compile` (Write C++ files but skip Unreal Build Tool)
+- `--level "..."` (Target level hint for --build/--orchestrate)
 
 Examples:
 
@@ -374,6 +385,42 @@ Instead of providing raw coordinates in your prompts, use **Semantic Blueprints*
 ```
 
 The system will use **RAG** to find these instructions and the **Alignment Tools** to perform precise bounding-box math, completely eliminating AI-math hallucinations.
+
+## RAG-Driven Code Generation (Ground Truth)
+
+The C++ generation pipeline (`--two-phase`) no longer relies on hardcoded rules in the system prompt. It uses a **Dynamic API Rules** system:
+
+1.  **Ground Truth**: All C++ facts (includes, constructors, pointer rules) are stored in `data/ue_api_knowledge.md`.
+2.  **Surgical Retrieval**: For every class being generated, the agent queries the vector DB for the specific component rules.
+3.  **Unyielding Constraint**: The LLM is strictly forbidden from guessing and MUST obey the retrieved rules.
+
+### Architecture Blueprints
+
+The system also supports **Architecture Blueprints** stored in `data/blueprints/`. These are natural language descriptions of complex structures (like a "tower" or "hut") that the RAG system retrieves to guide the **Live Builder**.
+
+### How to Expand Knowledge:
+
+#### 1. Manual Addition
+To teach the agent a new component (e.g., `UNiagaraComponent`), simply add a new header to `data/ue_api_knowledge.md`:
+```markdown
+## UNiagaraComponent
+Include: "NiagaraComponent.h"
+Constructor: CreateDefaultSubobject<UNiagaraComponent>(TEXT("Effect"))
+Pointer Rules: UNiagaraComponent*
+```
+
+#### 2. Automatic Scraping (Experimental)
+You can automatically crawl your Unreal Engine source code to generate knowledge blocks:
+```bash
+# Update UE_CLASSES_DIR in scripts/scrape_ue_api.py first!
+python scripts/scrape_ue_api.py
+```
+
+#### 3. Update Vector Database
+After modifying markdown files in `data/`, always rebuild the index:
+```bash
+python -m agents.rag_store
+```
 
 ## Security Notes
 

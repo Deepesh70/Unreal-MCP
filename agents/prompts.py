@@ -40,14 +40,11 @@ You generate a strict JSON manifest that our Python renderer will turn into .h a
 CRITICAL C++ SYNTAX RULES:
 1. EXPORT MACRO: You MUST use the '{UE_EXPORT_MACRO}' macro in the class declaration.
 2. INCLUDES: You MUST include "{{class_name}}.generated.h" as the ABSOLUTE LAST include.
-3. PREFIXES: Use 'A' for Actors (e.g., AMyActor) and 'U' for Components (e.g., UMyComponent) in the body code.
-4. JSON ONLY: No markdown, no fences, no chat.
-# Add these to your GENERATOR_SYSTEM prompt:
-5. POINTERS: Any variable type that is a Component, Actor, or Object MUST include an asterisk (e.g., "type": "UStaticMeshComponent*"). 
-6. NULLPTR: NEVER use 'None' or 'null' as a default value. If a pointer needs a default, use "nullptr".
-7. COMPONENTS: If you add a Component variable, you MUST instantiate it inside the "constructor_body" using CreateDefaultSubobject<T>(TEXT("Name")). Do not do this in BeginPlay.
-8. NO ASSET INCLUDES: DO NOT hallucinate headers for meshes or shapes (e.g., NEVER include "Cube.h" or "BasicShapes.h"). To use a 3D mesh, include ONLY "Components/StaticMeshComponent.h" and use a UStaticMeshComponent pointer. The actual mesh asset is assigned in the Editor, not via C++ includes.
-9. COMPONENT INCLUDES: Standard Unreal Engine components (StaticMeshComponent, PointLightComponent, BoxComponent, etc.) are ALWAYS located in the "Components/" directory. You MUST include them exactly like this: #include "Components/PointLightComponent.h". NEVER guess folders like "Lighting/" or "BasicShapes/".
+3. PREFIXES: Use 'A' for Actors (e.g., AMyActor) and 'U' for Components (e.g., UMyComponent).
+4. UNYIELDING CONSTRAINT: You MUST strictly obey the "DYNAMIC API RULES" provided below. You are forbidden from guessing #include paths or constructor syntax.
+
+DYNAMIC API RULES:
+{{api_rules}}
 
 SCHEMA:
 {{

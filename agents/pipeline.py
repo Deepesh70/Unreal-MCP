@@ -23,6 +23,7 @@ from unreal_mcp.codegen.file_writer import write_class_files
 from unreal_mcp.codegen.sorter import resolve_build_order
 from unreal_mcp.codegen.compiler import run_headless_compile_check, run_compile_preflight_check
 from unreal_mcp.config.settings import MAX_COMPILE_RETRIES
+from agents.rag_store import retrieve_api_knowledge
 
 
 def _extract_json(text: str) -> str:
@@ -82,10 +83,13 @@ async def generate_blueprint_json(llm, targeted_prompt: str) -> dict:
     system = GENERATOR_SYSTEM.replace(
         "{refined_spec}",
         "Focus on generating the requested class only.",
+    ).replace(
+        "{api_rules}",
+        targeted_prompt.get("api_rules", "No specific rules found.")
     )
     response = await llm.ainvoke([
         SystemMessage(content=system),
-        HumanMessage(content=targeted_prompt),
+        HumanMessage(content=targeted_prompt.get("prompt", str(targeted_prompt))),
     ])
     
     raw = _extract_json(response.content)
@@ -138,18 +142,24 @@ async def two_phase_run(
         for attempt in range(MAX_COMPILE_RETRIES):
             print(f"  Attempt {attempt + 1}/{MAX_COMPILE_RETRIES}...")
             
-            prompt = (
-                f"Project Objective: {refined}\n\n"
-                f"Previously Written Headers (Use for #includes):\n{code_context}\n\n"
-                f"TASK: Generate the C++ Blueprint JSON for the class: {class_name}"
-            )
+            # Step 3: Intercept Loop & Query Ground Truth
+            api_rules = retrieve_api_knowledge(class_name)
+            
+            prompt_data = {
+                "prompt": (
+                    f"Project Objective: {refined}\n\n"
+                    f"Previously Written Headers (Use for #includes):\n{code_context}\n\n"
+                    f"TASK: Generate the C++ Blueprint JSON for the class: {class_name}"
+                ),
+                "api_rules": api_rules
+            }
             
             if current_error_log:
-                prompt += f"\n\nCRITICAL: The previous attempt failed. Fix these errors:\n{current_error_log}"
+                prompt_data["prompt"] += f"\n\nCRITICAL: The previous attempt failed. Fix these errors:\n{current_error_log}"
 
             try:
                 # 1. Generate JSON
-                data = await generate_blueprint_json(llm, prompt)
+                data = await generate_blueprint_json(llm, prompt_data)
                 
                 # --- BRUTAL DIAGNOSTIC: See what the LLM is actually doing ---
                 if not isinstance(data, dict):
@@ -217,6 +227,15 @@ async def two_phase_run(
                     )
                     print(f"  [WRITE] {h_path}")
                     print(f"  [WRITE] {cpp_path}")
+                
+                # --- NEW: NO-COMPILE BYPASS ---
+                if not validate_compile:
+                    print(f" [SUCCESS] Module {class_name} written to disk.")
+                    print(" -> SKIP: Headless compiler bypassed. Alt-Tab to Unreal and press Ctrl+Alt+F11 to Live Code.")
+                    # Pass header context forward so multi-class generation remains coherent.
+                    code_context += f"\n// {blueprint.class_name}.h\n{header_code[:4000]}\n"
+                    success_this_class = True
+                    break # Exit the retry loop for this class immediately
 
                 # 4. Compile validation (optional, headless mode)
                 if write_files and validate_compile:

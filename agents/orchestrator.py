@@ -472,104 +472,76 @@ async def orchestrate_in_ue(
         await log("[Path] No C++ generation needed. Routing to live builder.")
         return await build_in_ue(llm, intent.placement_prompt or user_prompt, status_callback=status_callback)
 
+    # 1. Check State: Before generating code, ping the WebSocket/Process to see if the Editor is alive.
     editor_was_running = is_unreal_editor_running()
-    editor_closed_by_orchestrator = False
-
     compile_ok = False
     generated_modules: list[str] = []
-    used_live_coding_path = False
 
-    if editor_was_running and ORCH_ENABLE_LIVE_CODING:
-        await log("[Lifecycle] Unreal Editor is running. Trying Live Coding compile path first...")
+    if editor_was_running:
+        # PATH A: Editor Open -> Live Coding Flow
+        await log("[State] Unreal Editor is running. Using Path A (Live Coding Hot-Reload).")
+        
+        # Generate the files, but DO NOT run the headless compile (Build.bat).
         code_result = await two_phase_run(
             llm,
             intent.codegen_prompt or user_prompt,
             write_files=True,
-            validate_compile=False,
+            validate_compile=False, # SKIP Build.bat to avoid file locking
         )
-        generated_modules = _parse_built_modules(code_result)
+        
         if code_result.startswith("ABORTED:") or code_result.startswith("CRITICAL FAILURE"):
             return code_result
 
+        generated_modules = _parse_built_modules(code_result)
+        
+        # Trigger a Live Coding Recompile via the Unreal Remote Control API
         lc_ok, lc_message = await _trigger_live_coding_compile()
         await log(f"[LiveCoding] {lc_message}")
-
+        
         if lc_ok:
-            used_live_coding_path = True
             compile_ok = True
-            # Give editor a short moment to apply the patch before spawn attempts.
-            await asyncio.sleep(3)
+            await asyncio.sleep(3) # Wait for patch to apply
         else:
-            await log("[Lifecycle] Falling back to editor-close headless compile flow...")
-            await log("[Lifecycle] Requesting graceful editor quit via Remote Control...")
-            quit_ok, quit_msg = await _request_editor_quit_remote()
-            await log(f"[Lifecycle] {quit_msg}")
-            if quit_ok:
-                await asyncio.sleep(2)
-
-            closed, close_message = stop_unreal_editor(force=ORCH_FORCE_EDITOR_CLOSE)
-            await log(f"[Lifecycle] {close_message}")
-            if not closed:
-                return f"{code_result}\n\nORCHESTRATOR FAILED: {close_message}"
-            editor_closed_by_orchestrator = True
-            code_result = await two_phase_run(
-                llm,
-                intent.codegen_prompt or user_prompt,
-                write_files=True,
-                validate_compile=True,
-            )
-            compile_ok = code_result.startswith("Build Successful:")
-            if compile_ok:
-                generated_modules = _parse_built_modules(code_result)
+            await log("[Error] Live Coding trigger failed. You may need to compile manually in the Editor.")
+            return f"C++ Files Generated but Live Coding failed: {lc_message}"
     else:
-        if editor_was_running:
-            await log("[Lifecycle] Unreal Editor is running. Closing for safe headless compile...")
-            await log("[Lifecycle] Requesting graceful editor quit via Remote Control...")
-            quit_ok, quit_msg = await _request_editor_quit_remote()
-            await log(f"[Lifecycle] {quit_msg}")
-            if quit_ok:
-                await asyncio.sleep(2)
-
-            closed, close_message = stop_unreal_editor(force=ORCH_FORCE_EDITOR_CLOSE)
-            await log(f"[Lifecycle] {close_message}")
-            if not closed:
-                return f"ORCHESTRATOR FAILED: {close_message}"
-            editor_closed_by_orchestrator = True
-
-        await log("[Phase] Running two-phase C++ pipeline...")
+        # PATH B: Editor Closed -> Headless Build + Boot
+        await log("[State] Unreal Editor is closed. Using Path B (Headless Build + Cold Boot).")
+        
+        # Run the headless compile as normal
         code_result = await two_phase_run(
             llm,
             intent.codegen_prompt or user_prompt,
             write_files=True,
-            validate_compile=True,
+            validate_compile=True, # FULL HEADLESS COMPILE
         )
+        
         compile_ok = code_result.startswith("Build Successful:")
         if compile_ok:
             generated_modules = _parse_built_modules(code_result)
-
-    should_open_editor = intent.requires_scene_placement or editor_closed_by_orchestrator
-    if should_open_editor and not is_unreal_editor_running():
-        await log("[Lifecycle] Launching Unreal Editor...")
-        started, start_message = start_unreal_editor(startup_map=level)
-        await log(f"[Lifecycle] {start_message}")
-        if not started:
-            if compile_ok:
+            
+            # Boot the Unreal Editor back up before attempting to spawn
+            await log("[Lifecycle] Launching Unreal Editor...")
+            started, start_message = start_unreal_editor(startup_map=level)
+            await log(f"[Lifecycle] {start_message}")
+            if not started:
                 return f"{code_result}\n\nWARNING: Could not launch Unreal Editor: {start_message}"
-            return f"{code_result}\n\nAlso failed to relaunch Unreal Editor: {start_message}"
+            
+            # Wait for Remote Control to be ready
+            await log("[Lifecycle] Waiting for Unreal Remote Control websocket...")
+            ready = await _wait_for_editor_ws(ORCH_EDITOR_BOOT_TIMEOUT_SEC)
+            if not ready:
+                return (
+                    f"{code_result}\n\nPlacement skipped: Unreal websocket did not become reachable "
+                    f"within {ORCH_EDITOR_BOOT_TIMEOUT_SEC}s."
+                )
 
     if not compile_ok:
         return code_result
 
+    # Final Step: Scene Placement if requested
     if not intent.requires_scene_placement:
         return code_result
-
-    await log("[Lifecycle] Waiting for Unreal Remote Control websocket...")
-    ready = await _wait_for_editor_ws(ORCH_EDITOR_BOOT_TIMEOUT_SEC)
-    if not ready:
-        return (
-            f"{code_result}\n\nPlacement skipped: Unreal websocket did not become reachable "
-            f"within {ORCH_EDITOR_BOOT_TIMEOUT_SEC}s."
-        )
 
     class_name = _pick_class_name(intent.primary_class_name, generated_modules)
     if not class_name:
@@ -580,73 +552,7 @@ async def orchestrate_in_ue(
 
     await log(f"[Phase] Spawning generated class '{class_name}' x{max(1, intent.placement_count)}...")
     spawn_result = await _spawn_generated_class_instances(class_name, max(1, intent.placement_count))
-    if spawn_result.startswith("Failed to spawn class") and used_live_coding_path:
-        await log(
-            "[Fallback] Live Coding path could not spawn generated class. "
-            "Switching to full rebuild flow..."
-        )
-
-        if is_unreal_editor_running():
-            await log("[Fallback] Requesting graceful editor quit via Remote Control...")
-            quit_ok, quit_msg = await _request_editor_quit_remote()
-            await log(f"[Fallback] {quit_msg}")
-            if quit_ok:
-                await asyncio.sleep(2)
-
-            closed, close_message = stop_unreal_editor(force=ORCH_FORCE_EDITOR_CLOSE)
-            await log(f"[Fallback] {close_message}")
-            if not closed:
-                return (
-                    f"{code_result}\n\n{spawn_result}\n\n"
-                    f"Fallback failed: {close_message}"
-                )
-
-        fallback_build_result = await two_phase_run(
-            llm,
-            intent.codegen_prompt or user_prompt,
-            write_files=True,
-            validate_compile=True,
-        )
-        fallback_compile_ok = fallback_build_result.startswith("Build Successful:")
-        if not fallback_compile_ok:
-            return (
-                f"{code_result}\n\n{spawn_result}\n\n"
-                f"Fallback full rebuild failed:\n{fallback_build_result}"
-            )
-
-        fallback_modules = _parse_built_modules(fallback_build_result)
-        fallback_class_name = _pick_class_name(intent.primary_class_name, fallback_modules) or class_name
-
-        if not is_unreal_editor_running():
-            started, start_message = start_unreal_editor(startup_map=level)
-            await log(f"[Fallback] {start_message}")
-            if not started:
-                return (
-                    f"{code_result}\n\n{spawn_result}\n\n"
-                    f"Fallback build succeeded but editor relaunch failed: {start_message}"
-                )
-
-        ready = await _wait_for_editor_ws(ORCH_EDITOR_BOOT_TIMEOUT_SEC)
-        if not ready:
-            return (
-                f"{code_result}\n\n{spawn_result}\n\n"
-                f"Fallback build succeeded, but websocket did not come online within "
-                f"{ORCH_EDITOR_BOOT_TIMEOUT_SEC}s."
-            )
-
-        await log(
-            f"[Fallback] Spawning generated class '{fallback_class_name}' "
-            f"x{max(1, intent.placement_count)}..."
-        )
-        fallback_spawn_result = await _spawn_generated_class_instances(
-            fallback_class_name,
-            max(1, intent.placement_count),
-        )
-        return (
-            f"{code_result}\n\n{spawn_result}\n\n"
-            f"[Fallback Full Rebuild]\n{fallback_build_result}\n\n{fallback_spawn_result}"
-        )
-
+    
     return f"{code_result}\n\n{spawn_result}"
 
 

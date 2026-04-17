@@ -50,6 +50,7 @@ def print_usage():
     --interactive / -i  Interactive chat mode
     --prompt "..."      Custom prompt
     --dry-run           Two-phase preview only (no file writes, no compile)
+    --no-compile        Write C++ files but do not trigger Unreal Build Tool
     --level "..."       Target level hint for --build/--orchestrate prompts
 
   Examples:
@@ -72,6 +73,7 @@ def parse_options():
     build_mode = "--build" in sys.argv or "-b" in sys.argv
     orchestrate_mode = "--orchestrate" in sys.argv or "-o" in sys.argv
     dry_run = "--dry-run" in sys.argv
+    no_compile = "--no-compile" in sys.argv
     level = None
     prompt = None
 
@@ -85,7 +87,7 @@ def parse_options():
         if idx + 1 < len(sys.argv):
             level = sys.argv[idx + 1]
 
-    return test_mode, interactive, two_phase, build_mode, orchestrate_mode, dry_run, level, prompt
+    return test_mode, interactive, two_phase, build_mode, orchestrate_mode, dry_run, no_compile, level, prompt
 
 
 def _require_prompt(mode_name: str, prompt: str | None) -> bool:
@@ -102,7 +104,7 @@ async def main():
         sys.exit(1)
 
     backend = sys.argv[1].lower()
-    test_mode, interactive, two_phase, build_mode, orchestrate_mode, dry_run, level, custom_prompt = parse_options()
+    test_mode, interactive, two_phase, build_mode, orchestrate_mode, dry_run, no_compile, level, custom_prompt = parse_options()
 
     # ── Create LLM ──────────────────────────────────────────────
     if backend == "groq":
@@ -180,7 +182,12 @@ async def main():
                 print_usage()
                 sys.exit(1)
 
-            result = await two_phase_run(llm, custom_prompt, write_files=write_files)
+            result = await two_phase_run(
+                llm, 
+                custom_prompt, 
+                write_files=write_files, 
+                validate_compile=not no_compile
+            )
             print(f"\n[RESULT] {result}")
         return
 
