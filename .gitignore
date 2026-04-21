@@ -42,3 +42,9 @@ ehthumbs.db
 # ── Logs ──────────────────────────────────────────────────────────────
 *.log
 logs/
+
+graphify-out/
+graphify.md
+*.bin
+*.sqlite3
+*.pickle
