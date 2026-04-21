@@ -21,6 +21,8 @@ The repository supports three practical workflows:
 - [Available MCP Tools](#available-mcp-tools)
 - [Troubleshooting](#troubleshooting)
 - [Development Notes](#development-notes)
+- [Best Practice: Semantic Blueprints](#best-practice-semantic-blueprints)
+- [RAG-Driven Code Generation (Ground Truth)](#rag-driven-code-generation-ground-truth)
 - [Security Notes](#security-notes)
 
 ## Quick Start
@@ -28,8 +30,8 @@ The repository supports three practical workflows:
 1.  **Install dependencies**: `pip install -r requirements.txt`
 2.  **Configure paths**: Copy `.env.example` to `.env` and set your `UE_ENGINE_PATH` and `UE_PROJECT_ROOT`.
 3.  **Build RAG Database**: `python -m agents.rag_store`
-4.  **Run Agent**: `python agent.py groq --build -i` (Best for scene building)
-5.  **Run C++ Gen**: `python agent.py groq --two-phase --prompt "Create a health component"`
+4.  **Run Agent**: `python agent.py groq --build -i` (best for scene building)
+5.  **Run C++ Generation**: `python agent.py groq --two-phase --prompt "Create a health component"`
 
 ## What This Project Does
 
@@ -68,9 +70,9 @@ Agent logic:
 - `agents/orchestrator.py`: Hybrid generation + deployment flow (with robust intent analysis)
 - `agents/groq_agent.py`, `agents/ollama_agent.py`, `agents/gemini_agent.py`: backend factories
 
-Project Assets:
+Project assets:
 - `unreal_mcp/mappings/`: Friendly-name to Unreal path mappings for common assets.
-- `data/ue_api_knowledge.md`: The "Bible" of the project. Contains strict C++ syntax rules for Unreal components.
+- `data/ue_api_knowledge.md`: Ground-truth C++ rules for Unreal components (includes, constructors, pointer patterns).
 
 ## How It Works
 
