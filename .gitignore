@@ -44,3 +44,6 @@ ehthumbs.db
 logs/
 
 data/
+
+graphify-out/
+graphify.md
