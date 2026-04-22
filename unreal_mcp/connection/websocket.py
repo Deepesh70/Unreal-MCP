@@ -52,7 +52,7 @@ async def send_ue_ws_command(
         payload["Parameters"]["Body"]["parameters"] = parameters
 
     try:
-        async with websockets.connect(UE_WS_URL) as ws:
+        async with websockets.connect(UE_WS_URL, ping_timeout=120, close_timeout=120) as ws:
             await ws.send(json.dumps(payload))
 
             # Wait for Unreal's real-time response
