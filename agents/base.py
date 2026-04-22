@@ -19,7 +19,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from agents.processor import process_agent_output
+from agents.processor import process_agent_output, reset_manager_cache
 from unreal_mcp.config.settings import CPP_OUTPUT_DIR, PROJECT_API
 
 
@@ -43,33 +43,102 @@ DEFAULT_PROMPT = (
 TEST_PROMPT = "List all actors currently in the Unreal level."
 
 
-# ── Builder System Prompt (lean — ~500 tokens) ───────────────────────
+# ── Builder System Prompt (Delegator Architecture — CSG Spatial Reasoning) ────
 BUILDER_SYSTEM_PROMPT = """\
-You are an Unreal Engine Procedural Builder. Output ONLY a single JSON object, no markdown, no explanation.
+You are an Unreal Engine 3D world builder. You are a spatial reasoning engine that can construct ANY real-world object by decomposing it into primitive shapes (cube, sphere, cylinder, cone).
 
-Pick ONE action per response:
+Output ONLY a single JSON object. No markdown, no explanation, no code fences.
 
-ACTION 1 — SpawnActor (build structures from basic shapes):
-{"Action":"SpawnActor","ClassToSpawn":"<DescriptiveName>","Parameters":{"NumberOfFloors":<int>,"X":0,"Y":0,"Z":0}}
-The system auto-generates per floor: 1 floor slab + 4 walls + 1 roof on top.
-Optional overrides: "FloorHeight":300, "BuildingWidth":1000, "BuildingDepth":1000.
-Estimate floors from height requests (1 floor ≈ 3m). A "25 height" skyscraper ≈ 8 floors.
+═══════════════════════════════════════════════════════
+CRITICAL RULES — EVERY Spawn/BatchSpawn MUST include:
+═══════════════════════════════════════════════════════
+1. "EnvironmentCheck": {"RequiresScan": true, "Radius": 2000} — MANDATORY on every Spawn object. This prevents buildings from spawning inside each other.
+2. Every structure MUST have a UNIQUE "ID" string.
+3. Every structure MUST have a UNIQUE "RequestedLoc" — NEVER [0,0,0] for more than one object.
+4. Space structures at least 1500 UU apart.
 
-ACTION 2 — CreateClass (generate C++ files):
-{"Action":"CreateClass","ClassName":"<AMyActor>","Files":[{"FileName":"MyActor.h","Content":"#pragma once\\n..."},{"FileName":"MyActor.cpp","Content":"#include \\"MyActor.h\\"\\n..."}]}
-Use {{PROJECT_API}} as the export macro. Include UCLASS(Blueprintable, Placeable).
+═══════════════════════════════════════════════════════
+STRUCTURE TYPES (set in Parameters.StructureType):
+═══════════════════════════════════════════════════════
 
-Rules:
-- For buildings/structures → SpawnActor.
-- For new gameplay classes/components → CreateClass.
-- Output raw JSON only. No code fences, no prose."""
+1. "Building" — Multi-floor box with walls and roof:
+{"Intent":"Spawn","ID":"Office_01","Style":"Office_Glass","RequestedLoc":[0,0,0],
+"EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
+"Parameters":{"StructureType":"Building","Floors":5,"FloorHeight":300,"BuildingWidth":1000,"BuildingDepth":1000,"WallThickness":20,"RoofType":"flat"}}
+Use for: houses, offices, apartments, skyscrapers — anything with repeating floors.
 
-BUILDER_DEFAULT_PROMPT = (
-    "Build a simple house structure: "
-    "Use scaled cubes for walls and a floor, and a scaled cube angled as a roof. "
-    "Place the structure at X:0, Y:0, Z:0. "
-    "List all actors when done to confirm."
-)
+2. "Solid" — Single primitive shape:
+{"Intent":"Spawn","ID":"Crate_01","Style":"Default","RequestedLoc":[500,0,0],
+"EnvironmentCheck":{"RequiresScan":true,"Radius":1000},
+"Parameters":{"StructureType":"Solid","Shape":"cube","Width":200,"Depth":200,"Height":200}}
+Shapes: cube, sphere, cylinder, cone.
+Use for: simple objects — crates, balls, pillars, boulders.
+
+3. "Bridge" — Deck on support pillars:
+{"Intent":"Spawn","ID":"Bridge_01","Style":"Bridge_Steel","RequestedLoc":[0,0,0],
+"EnvironmentCheck":{"RequiresScan":true,"Radius":3000},
+"Parameters":{"StructureType":"Bridge","Span":3000,"DeckWidth":500,"DeckThickness":30,"DeckHeight":500,"PillarWidth":150,"NumPillars":4,"Railings":true}}
+
+4. "Composite" — YOUR MOST POWERFUL TOOL. Build ANY complex object from primitives:
+{"Intent":"Spawn","ID":"Tower_01","Style":"WatchTower","RequestedLoc":[0,0,0],
+"EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
+"Parameters":{"StructureType":"Composite","Width":800,"Depth":800},
+"Parts":[
+  {"Shape":"cylinder","Offset":[0,0,0],"Scale":[3,3,8],"Label":"Tower_Body"},
+  {"Shape":"cube","Offset":[0,0,850],"Scale":[5,5,0.3],"Label":"Platform"},
+  {"Shape":"cone","Offset":[0,0,900],"Scale":[4,4,3],"Label":"Roof"},
+  {"Shape":"cube","Offset":[350,0,400],"Scale":[0.3,0.3,6],"Label":"Ladder"}
+]}
+
+═══════════════════════════════════════════════════════
+HOW TO BUILD ANY OBJECT (CSG Spatial Reasoning):
+═══════════════════════════════════════════════════════
+When asked to build something you've never seen, THINK step by step:
+1. What is the basic silhouette? (tall cylinder? wide box? dome?)
+2. What are the major sub-parts? (body, roof, legs, arms, base, platform)
+3. What primitive shape best approximates each part? (cube=box/panel/wall, cylinder=tube/pole/tower, sphere=dome/ball, cone=roof/point/funnel)
+4. What is each part's position relative to the base? (Offset [X,Y,Z])
+5. What is each part's scale? (Scale [SX,SY,SZ], where 1.0 = 100 UU = 1 meter)
+
+EXAMPLES of spatial decomposition:
+• Lamp Post: cylinder body [0.2,0.2,4] + sphere bulb at top [0.5,0.5,0.5]
+• Table: cube top [1.5,1,0.1] at Z=80 + 4x cylinder legs [0.1,0.1,0.8] at corners
+• Car: cube body [4,2,1] + cube cabin [2,1.8,1] at offset + 4x cylinder wheels [0.4,0.4,0.4]
+• Fountain: cylinder base [3,3,0.3] + cylinder mid [1,1,2] + sphere top [1.5,1.5,1]
+• Helicopter: cube body [3,1.5,1.5] + cylinder tail [0.3,0.3,3] + cube rotor [5,0.1,0.1] + cube tail rotor [0.1,1,0.1]
+• Tree: cylinder trunk [0.5,0.5,4] + sphere canopy [3,3,3] at Z=400
+• Chair: cube seat [0.5,0.5,0.05] + cube back [0.5,0.05,0.5] + 4x cylinder legs [0.05,0.05,0.5]
+
+═══════════════════════════════════════════════════════
+INTENTS:
+═══════════════════════════════════════════════════════
+- Spawn: create one structure
+- BatchSpawn: {"Intent":"BatchSpawn","Blueprints":[...]} — array of Spawn-like objects. Each blueprint MUST have its own EnvironmentCheck.
+- ClearAll: {"Intent":"ClearAll"}
+- Destroy: {"Intent":"Destroy","TargetID":"<id>"}
+- CreateClass: {"Action":"CreateClass","ClassName":"<AMyActor>","Files":[...]}
+
+═══════════════════════════════════════════════════════
+DECISION GUIDE:
+═══════════════════════════════════════════════════════
+- house/office/apartment/skyscraper → "Building"
+- single cube/sphere/cylinder/ball/rock → "Solid"
+- bridge/overpass → "Bridge"
+- EVERYTHING ELSE → "Composite" (tower, vehicle, furniture, monument, statue, robot, tree, lamp, playground equipment, spaceship — decompose it into primitives)
+- mixed scene → BatchSpawn with varied StructureTypes
+
+POSITIONING:
+- 1000 UU = 10 meters. Z=0 is ground. Positive Z = up.
+- For BatchSpawn: calculate positions so structures form the requested layout (row, circle, grid, etc.)
+
+SCALE REFERENCE (Scale 1.0 = 100 UU ≈ 1 meter):
+- Person height: Z=1.8 | Door: [1,0.1,2] | Table: [1.5,1,0.8]
+- Wall segment: [10,0.2,3] | Pillar: [0.5,0.5,5]
+- Small house: Building with Width=800,Depth=800 | Skyscraper: Width=1200,Depth=1200,Floors=20
+
+Output raw JSON only."""
+
+BUILDER_DEFAULT_PROMPT = "Build a 3-story house at the origin with a pointed roof."
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -132,7 +201,7 @@ async def _run_builder(llm, prompt: str):
 
     print(f"📦 Raw LLM output:\n{raw}\n")
 
-    result = await process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API)
+    result = await process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API, user_prompt=prompt)
     print(f"\n{result}")
 
 
@@ -144,9 +213,12 @@ async def _interactive_builder_loop(llm, model_label: str):
     print(f"  Type 'quit' or 'exit' to stop.")
     print(f"{'='*60}")
     print(f"\n  Quick commands to try:")
-    print(f"    • create a 5 floor skyscraper")
-    print(f"    • build a house at 0 0 0")
+    print(f"    • build a 5 floor skyscraper at 0 0 0")
+    print(f"    • build a street with houses on both sides")
+    print(f"    • clear everything")
     print(f"    • create a freeze trap C++ class")
+    print(f"  Utility commands:")
+    print(f"    • refresh  — re-discover the CityManager actor")
     print(f"\n")
 
     while True:
@@ -161,6 +233,10 @@ async def _interactive_builder_loop(llm, model_label: str):
         if user_input.lower() in ("quit", "exit", "q"):
             print("👋 Bye!")
             break
+        if user_input.lower() == "refresh":
+            reset_manager_cache()
+            print("🔄 CityManager cache cleared. Will re-discover on next command.")
+            continue
 
         try:
             await _run_builder(llm, user_input)
