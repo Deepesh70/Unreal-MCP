@@ -1,1 +1,0 @@
-Needed to have different type of keys for all these ai models as gemini groq wont stay only option to us. 
