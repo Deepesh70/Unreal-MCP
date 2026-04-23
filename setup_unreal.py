@@ -83,36 +83,42 @@ def replace_project_api(content, project_name):
 
 
 def patch_build_cs(build_cs_path):
-    """Add Json and JsonUtilities to the Build.cs if not already there."""
+    """Add Json, JsonUtilities, and Geometry Scripting modules to Build.cs."""
     if not os.path.exists(build_cs_path):
         print(f"  ⚠️  Build.cs not found at: {build_cs_path}")
-        print(f"      You must manually add \"Json\", \"JsonUtilities\" to PublicDependencyModuleNames.")
+        print(f"      You must manually add the required modules to PublicDependencyModuleNames.")
         return False
 
     with open(build_cs_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    if '"Json"' in content and '"JsonUtilities"' in content:
-        print("  ✅ Build.cs already has Json + JsonUtilities.")
+    # All modules we need injected
+    required_modules = [
+        '"Json"', '"JsonUtilities"',
+        '"GeometryScriptingCore"', '"DynamicMesh"', '"GeometryFramework"',
+    ]
+    missing = [m for m in required_modules if m not in content]
+
+    if not missing:
+        print("  ✅ Build.cs already has all required modules (Json, Geometry Scripting).")
         return True
 
-    # Find the PublicDependencyModuleNames line and add our modules
+    # Find the PublicDependencyModuleNames line and add missing modules
     pattern = r'(PublicDependencyModuleNames\.AddRange\s*\(\s*new\s*string\s*\[\]\s*\{[^}]*)'
     match = re.search(pattern, content)
     if match:
         existing = match.group(1)
-        if '"Json"' not in content:
-            # Add before the closing brace
-            patched = existing.rstrip().rstrip(',') + ', "Json", "JsonUtilities"'
-            content = content.replace(existing, patched)
+        injection = ', '.join(missing)
+        patched = existing.rstrip().rstrip(',') + ', ' + injection
+        content = content.replace(existing, patched)
 
-            with open(build_cs_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            print("  ✅ Added \"Json\", \"JsonUtilities\" to Build.cs")
-            return True
+        with open(build_cs_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"  ✅ Added {injection} to Build.cs")
+        return True
     else:
         print(f"  ⚠️  Could not auto-patch Build.cs. Please manually add:")
-        print(f'      "Json", "JsonUtilities" to PublicDependencyModuleNames')
+        print(f"      {', '.join(missing)} to PublicDependencyModuleNames")
         return False
 
 
