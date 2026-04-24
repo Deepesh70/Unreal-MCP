@@ -103,12 +103,13 @@ FString AProceduralCityManager::ProcessBlueprint(const FString& JsonPayload)
 			TEXT("JSON payload missing 'Intent' field"));
 	}
 
-	if (Intent == TEXT("Spawn"))      return HandleSpawn(JsonObj);
-	if (Intent == TEXT("BatchSpawn")) return HandleBatchSpawn(JsonObj);
-	if (Intent == TEXT("Modify"))     return HandleModify(JsonObj);
-	if (Intent == TEXT("Destroy"))    return HandleDestroy(JsonObj);
-	if (Intent == TEXT("ClearAll"))   return HandleClearAll();
-	if (Intent == TEXT("ScanArea"))   return HandleScanArea(JsonObj);
+	if (Intent == TEXT("Spawn"))              return HandleSpawn(JsonObj);
+	if (Intent == TEXT("BatchSpawn"))         return HandleBatchSpawn(JsonObj);
+	if (Intent == TEXT("Modify"))             return HandleModify(JsonObj);
+	if (Intent == TEXT("Destroy"))            return HandleDestroy(JsonObj);
+	if (Intent == TEXT("ClearAll"))           return HandleClearAll();
+	if (Intent == TEXT("ScanArea"))           return HandleScanArea(JsonObj);
+	if (Intent == TEXT("GenerateGeometry"))   return HandleGenerateGeometry(JsonObj);
 
 	UE_LOG(LogTemp, Warning, TEXT("ProceduralCityManager: Unknown Intent '%s'"), *Intent);
 	return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), TEXT(""),
@@ -423,6 +424,16 @@ FString AProceduralCityManager::HandleClearAll()
 			Pair.Value->ClearInstances();
 		}
 	}
+
+	// Clear all DynamicMesh components (GenerateGeometry)
+	for (auto& Pair : DynamicMeshPool)
+	{
+		if (Pair.Value)
+		{
+			Pair.Value->DestroyComponent();
+		}
+	}
+	DynamicMeshPool.Empty();
 
 	Ledger.Empty();
 
@@ -895,6 +906,16 @@ void AProceduralCityManager::DestroyBuilding(const FString& ID)
 		}
 	}
 
+	// Remove from DynamicMesh pool if it's a GenerateGeometry object
+	if (auto* MeshComp = DynamicMeshPool.Find(ID))
+	{
+		if (*MeshComp)
+		{
+			(*MeshComp)->DestroyComponent();
+		}
+		DynamicMeshPool.Remove(ID);
+	}
+
 	// Remove from Ledger
 	Ledger.Remove(ID);
 }
@@ -1195,6 +1216,255 @@ FString AProceduralCityManager::BuildScanReceipt(
 		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output);
 	FJsonSerializer::Serialize(Receipt.ToSharedRef(), Writer);
 	return Output;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleGenerateGeometry — Runtime boolean modeling via Geometry Scripting
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleGenerateGeometry(TSharedPtr<FJsonObject> Json)
+{
+	// ── Parse ID ──────────────────────────────────────────────────
+	FString ID;
+	if (!Json->TryGetStringField(TEXT("ID"), ID) || ID.IsEmpty())
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), TEXT(""),
+			FVector::ZeroVector, FVector::ZeroVector,
+			TEXT("GenerateGeometry requires a non-empty 'ID' field"));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] GenerateGeometry: ID='%s'"), *ID);
+
+	// ── Duplicate guard ───────────────────────────────────────────
+	if (Ledger.Contains(ID) || DynamicMeshPool.Contains(ID))
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			FVector::ZeroVector, FVector::ZeroVector,
+			FString::Printf(TEXT("ID '%s' already exists"), *ID));
+	}
+
+	// ── Parse RequestedLoc ────────────────────────────────────────
+	FVector RequestedLoc = FVector::ZeroVector;
+	const TArray<TSharedPtr<FJsonValue>>* LocArr;
+	if (Json->TryGetArrayField(TEXT("RequestedLoc"), LocArr) && LocArr->Num() >= 3)
+	{
+		RequestedLoc = JsonArrayToVector(*LocArr);
+	}
+
+	// ── Parse BaseShape ───────────────────────────────────────────
+	const TSharedPtr<FJsonObject>* BaseShapePtr;
+	if (!Json->TryGetObjectField(TEXT("BaseShape"), BaseShapePtr))
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			RequestedLoc, RequestedLoc,
+			TEXT("GenerateGeometry requires a 'BaseShape' object"));
+	}
+
+	FString BaseType = TEXT("Box");
+	(*BaseShapePtr)->TryGetStringField(TEXT("Type"), BaseType);
+
+	FVector BaseDims(100.0, 100.0, 100.0);
+	const TArray<TSharedPtr<FJsonValue>>* DimArr;
+	if ((*BaseShapePtr)->TryGetArrayField(TEXT("Dimensions"), DimArr) && DimArr->Num() >= 3)
+	{
+		BaseDims = JsonArrayToVector(*DimArr);
+	}
+
+	// ── Parse optional Color ──────────────────────────────────────
+	FString ColorName;
+	Json->TryGetStringField(TEXT("Color"), ColorName);
+
+	// ── STEP A: Create DynamicMeshComponent + Base Mesh ───────────
+	UDynamicMeshComponent* MeshComp = NewObject<UDynamicMeshComponent>(this);
+	MeshComp->SetupAttachment(GetRootComponent());
+	MeshComp->SetMobility(EComponentMobility::Movable);
+	MeshComp->RegisterComponent();
+
+	UDynamicMesh* BaseMesh = MeshComp->GetDynamicMesh();
+	if (!BaseMesh)
+	{
+		MeshComp->DestroyComponent();
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			RequestedLoc, RequestedLoc, TEXT("Failed to allocate DynamicMesh"));
+	}
+
+	AppendPrimitiveToMesh(BaseMesh, BaseType, BaseDims, FTransform::Identity);
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] GenerateGeometry '%s': Base %s (%.0f x %.0f x %.0f)"),
+		*ID, *BaseType, BaseDims.X, BaseDims.Y, BaseDims.Z);
+
+	// ── STEP B+C: Process Operations (Boolean Loop) ───────────────
+	const TArray<TSharedPtr<FJsonValue>>* OpsArr;
+	if (Json->TryGetArrayField(TEXT("Operations"), OpsArr))
+	{
+		for (int32 i = 0; i < OpsArr->Num(); ++i)
+		{
+			const TSharedPtr<FJsonObject>* OpObj;
+			if (!(*OpsArr)[i]->TryGetObject(OpObj) || !(*OpObj).IsValid())
+				continue;
+
+			FString Action;
+			(*OpObj)->TryGetStringField(TEXT("Action"), Action);
+
+			FString ToolShape = TEXT("Cylinder");
+			(*OpObj)->TryGetStringField(TEXT("ToolShape"), ToolShape);
+
+			// Parse tool dimensions
+			FVector ToolDims(100.0, 100.0, 100.0);
+			double Radius = 100.0, Height = 100.0;
+			(*OpObj)->TryGetNumberField(TEXT("Radius"), Radius);
+			(*OpObj)->TryGetNumberField(TEXT("Height"), Height);
+
+			if (ToolShape.Equals(TEXT("Cylinder"), ESearchCase::IgnoreCase) ||
+				ToolShape.Equals(TEXT("Sphere"), ESearchCase::IgnoreCase))
+			{
+				ToolDims = FVector(Radius, Radius, Height);
+			}
+			else
+			{
+				const TArray<TSharedPtr<FJsonValue>>* TDArr;
+				if ((*OpObj)->TryGetArrayField(TEXT("Dimensions"), TDArr) && TDArr->Num() >= 3)
+					ToolDims = JsonArrayToVector(*TDArr);
+			}
+
+			// RelativeLoc → FTransform (Architect's mandate)
+			FVector RelLoc = FVector::ZeroVector;
+			const TArray<TSharedPtr<FJsonValue>>* RLArr;
+			if ((*OpObj)->TryGetArrayField(TEXT("RelativeLoc"), RLArr) && RLArr->Num() >= 3)
+				RelLoc = JsonArrayToVector(*RLArr);
+			FTransform ToolXform(FRotator::ZeroRotator, RelLoc, FVector::OneVector);
+
+			// Allocate temporary tool mesh
+			UDynamicMesh* ToolMesh = NewObject<UDynamicMesh>(this);
+			AppendPrimitiveToMesh(ToolMesh, ToolShape, ToolDims, FTransform::Identity);
+
+			// Determine boolean op type
+			EGeometryScriptBooleanOperation BoolOp = EGeometryScriptBooleanOperation::Subtract;
+			if (Action.Contains(TEXT("Union")))
+				BoolOp = EGeometryScriptBooleanOperation::Union;
+			else if (Action.Contains(TEXT("Intersect")))
+				BoolOp = EGeometryScriptBooleanOperation::Intersect;
+
+			// Apply the boolean cut
+			FGeometryScriptMeshBooleanOptions BoolOpts;
+			UGeometryScriptLibrary_MeshBooleanFunctions::ApplyMeshBoolean(
+				BaseMesh, FTransform::Identity,
+				ToolMesh, ToolXform,
+				BoolOp, BoolOpts, nullptr);
+
+			UE_LOG(LogTemp, Log, TEXT("[CityManager] GenGeo '%s' Op %d: %s %s at (%.0f,%.0f,%.0f)"),
+				*ID, i, *Action, *ToolShape, RelLoc.X, RelLoc.Y, RelLoc.Z);
+
+			// Release temp tool mesh
+			ToolMesh->MarkAsGarbage();
+			ToolMesh = nullptr;
+		}
+	}
+
+	// ── STEP D: Position, Material, Register ──────────────────────
+	MeshComp->SetWorldLocation(RequestedLoc);
+
+	if (!ColorName.IsEmpty())
+		ApplyMaterialByColor(MeshComp, ColorName);
+
+	DynamicMeshPool.Add(ID, MeshComp);
+
+	FProceduralBuilding Building;
+	Building.BuildingID = ID;
+	Building.StyleKey = TEXT("GeneratedGeometry");
+	Building.Location = RequestedLoc;
+	Ledger.Add(ID, MoveTemp(Building));
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] GenerateGeometry '%s': Done at (%.0f,%.0f,%.0f)"),
+		*ID, RequestedLoc.X, RequestedLoc.Y, RequestedLoc.Z);
+
+	return BuildReceipt(TEXT("BuildResult"), TEXT("Success"), ID, RequestedLoc, RequestedLoc);
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  AppendPrimitiveToMesh — Geometry Scripting shape factory
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+void AProceduralCityManager::AppendPrimitiveToMesh(
+	UDynamicMesh* TargetMesh, const FString& ShapeType,
+	FVector Dimensions, FTransform Transform)
+{
+	if (!TargetMesh) return;
+
+	FGeometryScriptPrimitiveOptions Opts;
+	FString Lower = ShapeType.ToLower();
+
+	if (Lower == TEXT("box"))
+	{
+		UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendBox(
+			TargetMesh, Opts, Transform,
+			Dimensions.X, Dimensions.Y, Dimensions.Z,
+			0, 0, 0,
+			EGeometryScriptPrimitiveOriginMode::Center, nullptr);
+	}
+	else if (Lower == TEXT("cylinder"))
+	{
+		UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendCylinder(
+			TargetMesh, Opts, Transform,
+			Dimensions.X, Dimensions.Z, 16, 0, true,
+			EGeometryScriptPrimitiveOriginMode::Center, nullptr);
+	}
+	else if (Lower == TEXT("sphere"))
+	{
+		UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSphere(
+			TargetMesh, Opts, Transform,
+			Dimensions.X, 16, 16,
+			EGeometryScriptPrimitiveOriginMode::Center, nullptr);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CityManager] Unknown shape '%s', defaulting to Box"), *ShapeType);
+		UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendBox(
+			TargetMesh, Opts, Transform,
+			Dimensions.X, Dimensions.Y, Dimensions.Z,
+			0, 0, 0,
+			EGeometryScriptPrimitiveOriginMode::Center, nullptr);
+	}
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  ApplyMaterialByColor — Runtime material from color name
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+void AProceduralCityManager::ApplyMaterialByColor(
+	UDynamicMeshComponent* MeshComp, const FString& ColorName)
+{
+	if (!MeshComp || ColorName.IsEmpty()) return;
+
+	FLinearColor Color = FLinearColor::White;
+	FString Lower = ColorName.ToLower();
+
+	if      (Lower == TEXT("red"))      Color = FLinearColor(0.8f, 0.1f, 0.1f);
+	else if (Lower == TEXT("blue"))     Color = FLinearColor(0.1f, 0.2f, 0.9f);
+	else if (Lower == TEXT("green"))    Color = FLinearColor(0.1f, 0.8f, 0.2f);
+	else if (Lower == TEXT("yellow"))   Color = FLinearColor(0.9f, 0.85f, 0.1f);
+	else if (Lower == TEXT("orange"))   Color = FLinearColor(0.9f, 0.5f, 0.1f);
+	else if (Lower == TEXT("purple"))   Color = FLinearColor(0.6f, 0.1f, 0.9f);
+	else if (Lower == TEXT("cyan"))     Color = FLinearColor(0.1f, 0.8f, 0.9f);
+	else if (Lower == TEXT("white"))    Color = FLinearColor::White;
+	else if (Lower == TEXT("black"))    Color = FLinearColor(0.02f, 0.02f, 0.02f);
+	else if (Lower == TEXT("gray"))     Color = FLinearColor(0.4f, 0.4f, 0.4f);
+	else if (Lower == TEXT("steel"))    Color = FLinearColor(0.5f, 0.55f, 0.6f);
+	else if (Lower == TEXT("gold"))     Color = FLinearColor(0.85f, 0.65f, 0.13f);
+	else if (Lower == TEXT("concrete")) Color = FLinearColor(0.65f, 0.63f, 0.6f);
+	else if (Lower == TEXT("wood"))     Color = FLinearColor(0.55f, 0.35f, 0.15f);
+
+	UMaterial* BaseMat = UMaterial::GetDefaultMaterial(MD_Surface);
+	if (BaseMat)
+	{
+		MeshComp->SetMaterial(0, BaseMat);
+		MeshComp->SetDefaultMeshColor(Color);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] Applied color '%s'"), *ColorName);
 }
 
 
