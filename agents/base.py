@@ -117,6 +117,30 @@ INTENTS:
 - ClearAll: {"Intent":"ClearAll"}
 - Destroy: {"Intent":"Destroy","TargetID":"<id>"}
 - CreateClass: {"Action":"CreateClass","ClassName":"<AMyActor>","Files":[...]}
+- GenerateGeometry: Runtime dynamic mesh with boolean cuts (see below)
+
+═══════════════════════════════════════════════════════
+GENERATE GEOMETRY (Dynamic Mesh + Boolean Operations):
+═══════════════════════════════════════════════════════
+Use this when you need TRUE geometry modeling — walls with cut-out windows, doors with arches, panels with holes, sculpted shapes. This creates REAL mesh geometry at runtime, not just scaled cubes.
+
+{"Intent":"GenerateGeometry","ID":"SciFi_Wall_01","RequestedLoc":[0,0,0],"Color":"steel",
+"BaseShape":{"Type":"Box","Dimensions":[1000,20,500]},
+"Operations":[
+  {"Action":"BooleanSubtract","ToolShape":"Cylinder","Radius":150,"Height":50,"RelativeLoc":[0,0,250]},
+  {"Action":"BooleanSubtract","ToolShape":"Box","Dimensions":[200,50,300],"RelativeLoc":[-300,0,150]}
+]}
+
+BaseShape Types: Box (Dimensions: [W,D,H]), Cylinder (Dimensions: [Radius,Radius,Height]), Sphere (Dimensions: [Radius,Radius,Radius])
+Operation Actions: BooleanSubtract (cut hole), BooleanUnion (merge shapes), BooleanIntersect (keep overlap)
+ToolShape Types: Box, Cylinder, Sphere
+Color options: red, blue, green, yellow, orange, purple, cyan, white, black, gray, steel, gold, concrete, wood
+
+EXAMPLES:
+• Wall with circular window: BaseShape Box [1000,20,500] + BooleanSubtract Cylinder R:120 at [0,0,300]
+• Wall with door: BaseShape Box [1000,20,500] + BooleanSubtract Box [200,50,400] at [0,0,200]
+• Wall with 3 windows: BaseShape Box [1200,20,500] + 3x BooleanSubtract Cylinder at different X offsets
+• Dome with hole: BaseShape Sphere [300,300,300] + BooleanSubtract Cylinder R:100 at top
 
 ═══════════════════════════════════════════════════════
 DECISION GUIDE:
@@ -124,7 +148,9 @@ DECISION GUIDE:
 - house/office/apartment/skyscraper → "Building"
 - single cube/sphere/cylinder/ball/rock → "Solid"
 - bridge/overpass → "Bridge"
-- EVERYTHING ELSE → "Composite" (tower, vehicle, furniture, monument, statue, robot, tree, lamp, playground equipment, spaceship — decompose it into primitives)
+- wall with window/door/hole/cutout/arch → GenerateGeometry
+- sculpted/carved/modeled geometry → GenerateGeometry
+- EVERYTHING ELSE (tower, vehicle, furniture, monument) → "Composite" (decompose into primitives)
 - mixed scene → BatchSpawn with varied StructureTypes
 
 POSITIONING:
