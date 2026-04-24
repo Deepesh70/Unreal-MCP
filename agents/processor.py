@@ -473,6 +473,8 @@ async def _handle_intent_with_fallback(data: dict) -> str:
         return f"⚠️  ClearAll is not available in legacy mode. Select all and delete manually in UE."
     elif intent == "ScanArea":
         return f"⚠️  ScanArea is not available in legacy mode (no spatial awareness)."
+    elif intent == "GenerateGeometry":
+        return f"⚠️  GenerateGeometry requires C++ Geometry Scripting (no legacy fallback). Place a CityManager in your level."
     else:
         return f"⚠️  Unknown intent '{intent}' in legacy fallback mode."
 
@@ -594,6 +596,29 @@ def _validate_intent_schema(data: dict) -> tuple:
         if center is not None:
             if not isinstance(center, list) or len(center) < 3:
                 return False, "ScanArea.Center must be an array of 3 numbers"
+
+    elif intent == "GenerateGeometry":
+        if "ID" not in data or not data["ID"]:
+            return False, "GenerateGeometry requires a non-empty 'ID' field"
+        base_shape = data.get("BaseShape")
+        if not isinstance(base_shape, dict):
+            return False, "GenerateGeometry requires a 'BaseShape' object"
+        if "Type" not in base_shape:
+            return False, "BaseShape must have a 'Type' field (Box, Cylinder, Sphere)"
+        dims = base_shape.get("Dimensions")
+        if dims is not None:
+            if not isinstance(dims, list) or len(dims) < 3:
+                return False, "BaseShape.Dimensions must be an array of 3 numbers"
+        ops = data.get("Operations", [])
+        if not isinstance(ops, list):
+            return False, "Operations must be an array"
+        for i, op in enumerate(ops):
+            if not isinstance(op, dict):
+                return False, f"Operations[{i}] must be an object"
+            if "Action" not in op:
+                return False, f"Operations[{i}] requires an 'Action' field"
+            if "ToolShape" not in op:
+                return False, f"Operations[{i}] requires a 'ToolShape' field"
 
     else:
         return False, f"Unknown Intent: '{intent}'"
@@ -878,14 +903,14 @@ async def process_agent_output(raw_content: str, output_dir: str, project_api: s
         data["Action"] = action
 
     # ── Auto-deduplicate IDs (prevent "already exists" rejections) ──
-    if intent in ("Spawn", "BatchSpawn"):
+    if intent in ("Spawn", "BatchSpawn", "GenerateGeometry"):
         _deduplicate_ids(data)
 
     # ── 4. Route to the correct handler ─────────────────────────────
     if action == "CreateClass":
         return _handle_create_class(data, output_dir, project_api)
 
-    if intent in ("Spawn", "BatchSpawn", "Modify", "Destroy", "ClearAll", "ScanArea"):
+    if intent in ("Spawn", "BatchSpawn", "Modify", "Destroy", "ClearAll", "ScanArea", "GenerateGeometry"):
         # Validate the schema before forwarding
         valid, error = _validate_intent_schema(data)
         if not valid:
@@ -939,6 +964,11 @@ def _deduplicate_ids(data: dict):
             old_id = bp.get("ID", "")
             if old_id:
                 bp["ID"] = _make_unique(old_id)
+
+    elif data.get("Intent") == "GenerateGeometry":
+        old_id = data.get("ID", "")
+        if old_id:
+            data["ID"] = _make_unique(old_id)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
