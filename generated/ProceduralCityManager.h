@@ -12,10 +12,19 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "ProceduralBuildingTypes.h"
+
+// Geometry Scripting — runtime boolean operations and dynamic mesh generation
+#include "GeometryScript/MeshPrimitiveFunctions.h"
+#include "GeometryScript/MeshBooleanFunctions.h"
+#include "Components/DynamicMeshComponent.h"
+#include "DynamicMeshActor.h"
+#include "UDynamicMesh.h"
+
 #include "ProceduralCityManager.generated.h"
 
 class UDataTable;
 class UHierarchicalInstancedStaticMeshComponent;
+class UDynamicMeshComponent;
 
 UCLASS(Blueprintable, Placeable, meta = (DisplayName = "Procedural City Manager"))
 class {{PROJECT_API}} AProceduralCityManager : public AActor
@@ -75,6 +84,7 @@ private:
 	FString HandleDestroy(TSharedPtr<FJsonObject> Json);
 	FString HandleClearAll();
 	FString HandleScanArea(TSharedPtr<FJsonObject> Json);
+	FString HandleGenerateGeometry(TSharedPtr<FJsonObject> Json);
 
 	// ── Core Building Logic ─────────────────────────────────────
 	// Routes by StructureType: Building, Solid, Composite
@@ -103,6 +113,20 @@ private:
 	// ── HISM Pool Management ────────────────────────────────────
 	UHierarchicalInstancedStaticMeshComponent* GetOrCreateHISM(
 		UStaticMesh* Mesh, UMaterialInterface* Material = nullptr);
+
+	// ── Geometry Scripting Helpers ───────────────────────────────
+	// Appends a primitive shape onto a UDynamicMesh at the given transform.
+	void AppendPrimitiveToMesh(UDynamicMesh* TargetMesh,
+		const FString& ShapeType, FVector Dimensions,
+		FTransform Transform);
+
+	// Applies a material to a DynamicMeshComponent by color name.
+	void ApplyMaterialByColor(UDynamicMeshComponent* MeshComp,
+		const FString& ColorName);
+
+	// Pool of DynamicMesh components — one per GenerateGeometry ID.
+	UPROPERTY()
+	TMap<FString, TObjectPtr<UDynamicMeshComponent>> DynamicMeshPool;
 
 	// ── Mesh Resolution ─────────────────────────────────────────
 	UStaticMesh* GetMeshForShape(const FString& ShapeName);
