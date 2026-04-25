@@ -143,15 +143,43 @@ EXAMPLES:
 • Dome with hole: BaseShape Sphere [300,300,300] + BooleanSubtract Cylinder R:100 at top
 
 ═══════════════════════════════════════════════════════
+MANDATORY RULES (NEVER VIOLATE):
+═══════════════════════════════════════════════════════
+1. ANY building with floors/stories/levels MUST use StructureType "Building" — NEVER Composite.
+2. A "hut" is a 1-floor Building with RoofType "pointed". A "house" is a Building. A "cabin" is a Building.
+3. Composite is ONLY for non-building objects: vehicles, furniture, statues, trees, robots, machines.
+4. Scale 1.0 = 100 UU = 1 meter. A 3-story house is about 9 meters tall (Floors:3, FloorHeight:300).
+
+═══════════════════════════════════════════════════════
 DECISION GUIDE:
 ═══════════════════════════════════════════════════════
-- house/office/apartment/skyscraper → "Building"
-- single cube/sphere/cylinder/ball/rock → "Solid"
+- house/hut/cabin/cottage/shack/bungalow → "Building" (Floors:1, RoofType:"pointed")
+- office/apartment/skyscraper/tower block → "Building" (Floors:N, RoofType:"flat")
+- any building with N stories/floors → "Building" (Floors:N)
+- single cube/sphere/cylinder/ball/rock/crate → "Solid"
 - bridge/overpass → "Bridge"
 - wall with window/door/hole/cutout/arch → GenerateGeometry
 - sculpted/carved/modeled geometry → GenerateGeometry
-- EVERYTHING ELSE (tower, vehicle, furniture, monument) → "Composite" (decompose into primitives)
+- vehicle/furniture/statue/tree/robot/machine → "Composite"
 - mixed scene → BatchSpawn with varied StructureTypes
+
+═══════════════════════════════════════════════════════
+BUILDING EXAMPLES:
+═══════════════════════════════════════════════════════
+• 3-story house with pointed roof:
+  {"Intent":"Spawn","ID":"House_01","Style":"Residential","RequestedLoc":[0,0,0],
+   "EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
+   "Parameters":{"StructureType":"Building","Floors":3,"FloorHeight":300,"BuildingWidth":800,"BuildingDepth":800,"WallThickness":20,"RoofType":"pointed"}}
+
+• Hut:
+  {"Intent":"Spawn","ID":"Hut_01","Style":"Wooden","RequestedLoc":[0,0,0],
+   "EnvironmentCheck":{"RequiresScan":true,"Radius":1000},
+   "Parameters":{"StructureType":"Building","Floors":1,"FloorHeight":250,"BuildingWidth":400,"BuildingDepth":400,"WallThickness":15,"RoofType":"pointed"}}
+
+• Skyscraper:
+  {"Intent":"Spawn","ID":"Tower_01","Style":"Office_Glass","RequestedLoc":[0,0,0],
+   "EnvironmentCheck":{"RequiresScan":true,"Radius":3000},
+   "Parameters":{"StructureType":"Building","Floors":20,"FloorHeight":300,"BuildingWidth":1200,"BuildingDepth":1200,"WallThickness":30,"RoofType":"flat"}}
 
 POSITIONING:
 - 1000 UU = 10 meters. Z=0 is ground. Positive Z = up.
@@ -160,7 +188,8 @@ POSITIONING:
 SCALE REFERENCE (Scale 1.0 = 100 UU ≈ 1 meter):
 - Person height: Z=1.8 | Door: [1,0.1,2] | Table: [1.5,1,0.8]
 - Wall segment: [10,0.2,3] | Pillar: [0.5,0.5,5]
-- Small house: Building with Width=800,Depth=800 | Skyscraper: Width=1200,Depth=1200,Floors=20
+- Small house: Building with Width=800,Depth=800,Floors=2 | Hut: Width=400,Depth=400,Floors=1
+- Skyscraper: Width=1200,Depth=1200,Floors=20
 
 Output raw JSON only."""
 
