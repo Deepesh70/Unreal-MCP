@@ -31,28 +31,38 @@ def find_uproject(search_root=None):
                     return os.path.join(root, f)
         return None
 
-    # Search common locations
+    # Search common locations (priority paths first)
     search_paths = [
         os.path.expanduser("~\\Documents\\Unreal Projects"),
         os.path.expanduser("~\\Desktop"),
+        "E:\\Epic Games\\game folder",
+        "D:\\Epic Games",
         "D:\\",
         "E:\\",
         "C:\\Users",
     ]
 
-    # Quick scan — only check 3 levels deep
+    # Scan up to 6 levels deep to find nested projects
     found = []
+    seen = set()
     for base in search_paths:
         if not os.path.exists(base):
             continue
         for root, dirs, files in os.walk(base):
             depth = root.replace(base, '').count(os.sep)
-            if depth > 3:
+            if depth > 6:
+                dirs.clear()
+                continue
+            # Skip engine/template directories to avoid clutter
+            if any(skip in root for skip in ['\\Engine\\', '\\Templates\\', '\\Intermediate\\', '\\DerivedDataCache']):
                 dirs.clear()
                 continue
             for f in files:
                 if f.endswith('.uproject'):
-                    found.append(os.path.join(root, f))
+                    full = os.path.join(root, f)
+                    if full not in seen:
+                        seen.add(full)
+                        found.append(full)
 
     return found
 
