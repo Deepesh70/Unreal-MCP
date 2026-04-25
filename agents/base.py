@@ -295,6 +295,7 @@ def _enrich_prompt_with_recipe(user_prompt: str) -> str:
 def _recipe_to_json(recipe: dict, user_prompt: str) -> str:
     """Convert a recipe directly to Spawn JSON — no LLM needed."""
     import re
+    import time
     
     # Try to extract location from user prompt like "at 500 0 0"
     loc = [0, 0, 0]
@@ -310,11 +311,13 @@ def _recipe_to_json(recipe: dict, user_prompt: str) -> str:
     
     structure_type = recipe.get("structureType", "Composite")
     name = recipe["name"]
+    # Unique ID with timestamp so you can build multiple of the same type
+    uid = int(time.time() * 1000) % 100000
     
     if structure_type == "Building":
         result = {
             "Intent": "Spawn",
-            "ID": f"{name.title()}_01",
+            "ID": f"{name.title()}_{uid}",
             "Style": recipe.get("aliases", [name])[0] if recipe.get("aliases") else name,
             "RequestedLoc": loc,
             "EnvironmentCheck": {"RequiresScan": True, "Radius": 2000},
@@ -335,7 +338,7 @@ def _recipe_to_json(recipe: dict, user_prompt: str) -> str:
         # Composite — use parts directly
         result = {
             "Intent": "Spawn",
-            "ID": f"{name.title()}_01",
+            "ID": f"{name.title()}_{uid}",
             "Style": name.title(),
             "RequestedLoc": loc,
             "EnvironmentCheck": {"RequiresScan": True, "Radius": 2000},
@@ -370,6 +373,17 @@ async def _run_builder(llm, prompt: str):
         print(f"📐 Recipe matched: '{recipe['name']}' ({parts_count} parts) — bypassing LLM")
         raw = _recipe_to_json(recipe, prompt)
         print(f"📦 Recipe JSON:\n{raw}\n")
+        
+        # Force recipe composites through LEGACY path (individual actors)
+        # C++ HISM merges all same-mesh instances into one visual entity = ugly single block
+        data = _json.loads(raw)
+        if data.get("Parameters", {}).get("StructureType") == "Composite":
+            from agents.processor import _handle_spawn_fallback
+            print("🔧 Using direct-spawn mode for recipe (individual actors per part)")
+            result = await _handle_spawn_fallback(data)
+            print(f"\n{result}")
+            return
+        
         result = await process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API, user_prompt=prompt)
         print(f"\n{result}")
         return
