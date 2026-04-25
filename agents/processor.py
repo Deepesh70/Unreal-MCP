@@ -157,8 +157,8 @@ def _find_clear_position(x, y, w, d, max_attempts=80):
     return final_x, y, True
 
 
-async def _spawn_and_scale(x, y, z, sx, sy, sz, asset=None):
-    """Spawn a shape at (x,y,z) then scale it to (sx,sy,sz). Returns actor path or None."""
+async def _spawn_and_scale(x, y, z, sx, sy, sz, asset=None, color_name=""):
+    """Spawn a shape at (x,y,z), scale it, and optionally apply a color material. Returns actor path or None."""
     if asset is None:
         asset = _CUBE_ASSET
     resp = await send_ue_ws_command(
@@ -176,7 +176,55 @@ async def _spawn_and_scale(x, y, z, sx, sy, sz, asset=None):
             function_name="SetActorScale3D",
             parameters={"NewScale3D": {"X": sx, "Y": sy, "Z": sz}},
         )
+        # Apply color material if specified
+        if color_name and color_name in _MATERIAL_COLORS:
+            await _apply_actor_color(actor_path, color_name)
     return actor_path
+
+
+async def _apply_actor_color(actor_path: str, color_name: str):
+    """Apply a colored dynamic material to a spawned actor."""
+    color = _MATERIAL_COLORS.get(color_name)
+    if not color:
+        return
+    try:
+        # Get the static mesh component (standard name for StaticMeshActor)
+        comp_path = f"{actor_path}.StaticMeshComponent0"
+        # Create a dynamic material instance from the existing material
+        resp = await send_ue_ws_command(
+            object_path=comp_path,
+            function_name="CreateDynamicMaterialInstance",
+            parameters={
+                "ElementIndex": 0,
+            },
+        )
+        mat_path = resp.get("ResponseBody", {}).get("ReturnValue", "")
+        if mat_path:
+            # Try setting BaseColor parameter (works if material has this param)
+            try:
+                await send_ue_ws_command(
+                    object_path=mat_path,
+                    function_name="SetVectorParameterValue",
+                    parameters={
+                        "ParameterName": "BaseColor",
+                        "ParameterValue": color,
+                    },
+                )
+            except Exception:
+                # Try "Color" parameter as fallback
+                try:
+                    await send_ue_ws_command(
+                        object_path=mat_path,
+                        function_name="SetVectorParameterValue",
+                        parameters={
+                            "ParameterName": "Color",
+                            "ParameterValue": color,
+                        },
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass  # Color application is best-effort
 
 
 async def _handle_spawn_fallback(data: dict) -> str:
@@ -439,19 +487,18 @@ async def _build_composite(data, base_x, base_y, base_z):
         material_name = part.get("material", part.get("Material", "")).lower()
 
         try:
-            actor_path = await _spawn_and_scale(px, py, pz, sx, sy, sz, asset)
+            actor_path = await _spawn_and_scale(px, py, pz, sx, sy, sz, asset, color_name=material_name)
             spawned += 1
-            # Apply material color if specified
-            if actor_path and material_name and material_name in _MATERIAL_COLORS:
-                color = _MATERIAL_COLORS[material_name]
+            # Label the actor for easy identification in Outliner
+            if actor_path:
                 try:
                     await send_ue_ws_command(
                         object_path=actor_path,
                         function_name="SetActorLabel",
-                        parameters={"NewActorLabel": f"{label}_{material_name}"},
+                        parameters={"NewActorLabel": f"{label}_{material_name}" if material_name else label},
                     )
                 except Exception:
-                    pass  # Label setting is non-critical
+                    pass
         except Exception as e:
             errors.append(f"{label}: {e}")
 
