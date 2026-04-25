@@ -25,7 +25,7 @@
     },
     {
       "name": "house",
-      "aliases": ["home", "residential", "dwelling", "family_house"],
+      "aliases": ["home", "residential", "dwelling", "family_house", "building", "apartment", "story"],
       "description": "A multi-story residential building with walls, windows, and a pointed roof",
       "structureType": "Building",
       "defaultFloors": 2,
