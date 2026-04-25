@@ -1114,7 +1114,35 @@ bool AProceduralCityManager::IsExternallyClear(FVector Point, FVector Extents)
 		ObjectTypes, nullptr, IgnoreActors,
 		FoundActors);
 
-	return FoundActors.Num() == 0;
+	// Filter out expected level geometry (landscape, ground, sky, etc.)
+	int32 RealObstacles = 0;
+	for (AActor* Actor : FoundActors)
+	{
+		if (!Actor) continue;
+		FString ClassName = Actor->GetClass()->GetName();
+		// Skip landscape, ground planes, volumes, and lighting actors
+		if (ClassName.Contains(TEXT("Landscape")) ||
+			ClassName.Contains(TEXT("GroundPlane")) ||
+			ClassName.Contains(TEXT("Floor")) ||
+			ClassName.Contains(TEXT("Volume")) ||
+			ClassName.Contains(TEXT("Sky")) ||
+			ClassName.Contains(TEXT("Light")) ||
+			ClassName.Contains(TEXT("Fog")) ||
+			ClassName.Contains(TEXT("PostProcess")) ||
+			ClassName.Contains(TEXT("PlayerStart")) ||
+			ClassName.Contains(TEXT("GameMode")) ||
+			ClassName.Contains(TEXT("WorldSettings")) ||
+			ClassName.Contains(TEXT("NavigationData")) ||
+			ClassName.Contains(TEXT("CityManager")))
+		{
+			continue;
+		}
+		RealObstacles++;
+		UE_LOG(LogTemp, Verbose, TEXT("[CityManager] External obstacle: %s (%s)"),
+			*Actor->GetName(), *ClassName);
+	}
+
+	return RealObstacles == 0;
 }
 
 bool AProceduralCityManager::IsInternallyClear(FVector Point, float MinDistance)
