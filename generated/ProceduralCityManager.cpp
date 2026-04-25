@@ -1319,6 +1319,8 @@ FString AProceduralCityManager::HandleGenerateGeometry(TSharedPtr<FJsonObject> J
 			if (ToolShape.Equals(TEXT("Cylinder"), ESearchCase::IgnoreCase) ||
 				ToolShape.Equals(TEXT("Sphere"), ESearchCase::IgnoreCase))
 			{
+				// Ensure Height is large enough to fully pierce the base mesh
+				Height = FMath::Max(Height, 200.0);
 				ToolDims = FVector(Radius, Radius, Height);
 			}
 			else
@@ -1328,12 +1330,32 @@ FString AProceduralCityManager::HandleGenerateGeometry(TSharedPtr<FJsonObject> J
 					ToolDims = JsonArrayToVector(*TDArr);
 			}
 
-			// RelativeLoc → FTransform (Architect's mandate)
+			// RelativeLoc + RelativeRot → FTransform
 			FVector RelLoc = FVector::ZeroVector;
 			const TArray<TSharedPtr<FJsonValue>>* RLArr;
 			if ((*OpObj)->TryGetArrayField(TEXT("RelativeLoc"), RLArr) && RLArr->Num() >= 3)
 				RelLoc = JsonArrayToVector(*RLArr);
-			FTransform ToolXform(FRotator::ZeroRotator, RelLoc, FVector::OneVector);
+
+			// Parse optional rotation [Pitch, Yaw, Roll]
+			FRotator ToolRot = FRotator::ZeroRotator;
+			const TArray<TSharedPtr<FJsonValue>>* RotArr;
+			if ((*OpObj)->TryGetArrayField(TEXT("RelativeRot"), RotArr) && RotArr->Num() >= 3)
+			{
+				ToolRot = FRotator(
+					(*RotArr)[0]->AsNumber(),  // Pitch
+					(*RotArr)[1]->AsNumber(),  // Yaw
+					(*RotArr)[2]->AsNumber()   // Roll
+				);
+			}
+			else if (ToolShape.Equals(TEXT("Cylinder"), ESearchCase::IgnoreCase))
+			{
+				// AUTO-ROTATE: Cylinders default to vertical (Z-up).
+				// For cutting through walls, rotate 90° on X so they
+				// punch horizontally through the Y-thickness.
+				ToolRot = FRotator(90.0, 0.0, 0.0);
+			}
+
+			FTransform ToolXform(ToolRot, RelLoc, FVector::OneVector);
 
 			// Allocate temporary tool mesh
 			UDynamicMesh* ToolMesh = NewObject<UDynamicMesh>(this);
@@ -1344,7 +1366,7 @@ FString AProceduralCityManager::HandleGenerateGeometry(TSharedPtr<FJsonObject> J
 			if (Action.Contains(TEXT("Union")))
 				BoolOp = EGeometryScriptBooleanOperation::Union;
 			else if (Action.Contains(TEXT("Intersect")))
-				BoolOp = EGeometryScriptBooleanOperation::Intersect;
+				BoolOp = EGeometryScriptBooleanOperation::Intersection;
 
 			// Apply the boolean cut
 			FGeometryScriptMeshBooleanOptions BoolOpts;
@@ -1413,7 +1435,7 @@ void AProceduralCityManager::AppendPrimitiveToMesh(
 	}
 	else if (Lower == TEXT("sphere"))
 	{
-		UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSphere(
+		UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSphereLatLong(
 			TargetMesh, Opts, Transform,
 			Dimensions.X, 16, 16,
 			EGeometryScriptPrimitiveOriginMode::Center, nullptr);
@@ -1457,12 +1479,10 @@ void AProceduralCityManager::ApplyMaterialByColor(
 	else if (Lower == TEXT("concrete")) Color = FLinearColor(0.65f, 0.63f, 0.6f);
 	else if (Lower == TEXT("wood"))     Color = FLinearColor(0.55f, 0.35f, 0.15f);
 
-	UMaterial* BaseMat = UMaterial::GetDefaultMaterial(MD_Surface);
-	if (BaseMat)
-	{
-		MeshComp->SetMaterial(0, BaseMat);
-		MeshComp->SetDefaultMeshColor(Color);
-	}
+	// Use Constant Color Override mode — built-in to BaseDynamicMeshComponent
+	// This overrides any material and renders a solid color directly.
+	MeshComp->SetColorOverrideMode(EDynamicMeshComponentColorOverrideMode::Constant);
+	MeshComp->SetConstantOverrideColor(Color.ToFColor(true));
 
 	UE_LOG(LogTemp, Log, TEXT("[CityManager] Applied color '%s'"), *ColorName);
 }
