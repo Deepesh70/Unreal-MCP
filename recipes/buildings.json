@@ -202,6 +202,81 @@
         {"name": "side_window_1", "shape": "cube", "offset": [402,300,220], "scale": [0.05,0.6,0.5], "material": "cyan"},
         {"name": "side_window_2", "shape": "cube", "offset": [402,-300,220], "scale": [0.05,0.6,0.5], "material": "cyan"}
       ]
+    },
+    {
+      "name": "classroom",
+      "aliases": ["class", "school", "lecture_hall", "lab", "computer_lab", "study_room"],
+      "description": "A classroom with desks, computers, whiteboard, and chairs",
+      "structureType": "Composite",
+      "width": 1200,
+      "depth": 800,
+      "parts": [
+        {"name": "floor", "shape": "cube", "offset": [0,0,5], "scale": [12,8,0.1], "material": "gray"},
+        {"name": "wall_back", "shape": "cube", "offset": [0,-400,150], "scale": [12,0.1,3.0], "material": "white"},
+        {"name": "wall_left", "shape": "cube", "offset": [-600,0,150], "scale": [0.1,8,3.0], "material": "white"},
+        {"name": "wall_right", "shape": "cube", "offset": [600,0,150], "scale": [0.1,8,3.0], "material": "white"},
+        {"name": "wall_front", "shape": "cube", "offset": [0,400,150], "scale": [12,0.1,3.0], "material": "white"},
+        {"name": "ceiling", "shape": "cube", "offset": [0,0,305], "scale": [12,8,0.1], "material": "white"},
+        {"name": "whiteboard", "shape": "cube", "offset": [0,-395,180], "scale": [6,0.05,2.0], "material": "white"},
+        {"name": "board_frame", "shape": "cube", "offset": [0,-393,180], "scale": [6.2,0.08,2.1], "material": "black"},
+        {"name": "teacher_desk", "shape": "cube", "offset": [0,-280,40], "scale": [2.5,1.0,0.8], "material": "wood"},
+        {"name": "teacher_chair", "shape": "cube", "offset": [0,-220,30], "scale": [0.5,0.5,0.6], "material": "black"},
+        {"name": "desk_1", "shape": "cube", "offset": [-350,-80,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_1", "shape": "cube", "offset": [-350,-80,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_1", "shape": "cube", "offset": [-350,-20,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_2", "shape": "cube", "offset": [0,-80,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_2", "shape": "cube", "offset": [0,-80,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_2", "shape": "cube", "offset": [0,-20,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_3", "shape": "cube", "offset": [350,-80,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_3", "shape": "cube", "offset": [350,-80,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_3", "shape": "cube", "offset": [350,-20,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_4", "shape": "cube", "offset": [-350,120,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_4", "shape": "cube", "offset": [-350,120,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_4", "shape": "cube", "offset": [-350,180,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_5", "shape": "cube", "offset": [0,120,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_5", "shape": "cube", "offset": [0,120,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_5", "shape": "cube", "offset": [0,180,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_6", "shape": "cube", "offset": [350,120,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_6", "shape": "cube", "offset": [350,120,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_6", "shape": "cube", "offset": [350,180,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "door", "shape": "cube", "offset": [595,300,90], "scale": [0.08,1.0,1.8], "material": "wood"},
+        {"name": "window_1", "shape": "cube", "offset": [-595,-150,180], "scale": [0.05,1.5,1.2], "material": "cyan"},
+        {"name": "window_2", "shape": "cube", "offset": [-595,150,180], "scale": [0.05,1.5,1.2], "material": "cyan"}
+      ]
+    },
+    {
+      "name": "garage",
+      "aliases": ["parking", "carport", "car_shelter"],
+      "description": "A simple garage with an open front",
+      "structureType": "Composite",
+      "width": 500,
+      "depth": 600,
+      "parts": [
+        {"name": "floor", "shape": "cube", "offset": [0,0,5], "scale": [5,6,0.1], "material": "concrete"},
+        {"name": "wall_back", "shape": "cube", "offset": [0,-300,150], "scale": [5,0.1,3.0], "material": "concrete"},
+        {"name": "wall_left", "shape": "cube", "offset": [-250,0,150], "scale": [0.1,6,3.0], "material": "concrete"},
+        {"name": "wall_right", "shape": "cube", "offset": [250,0,150], "scale": [0.1,6,3.0], "material": "concrete"},
+        {"name": "roof", "shape": "cube", "offset": [0,0,305], "scale": [5.3,6.3,0.1], "material": "gray"},
+        {"name": "door_track_l", "shape": "cube", "offset": [-200,302,140], "scale": [0.06,0.06,2.8], "material": "steel"},
+        {"name": "door_track_r", "shape": "cube", "offset": [200,302,140], "scale": [0.06,0.06,2.8], "material": "steel"}
+      ]
+    },
+    {
+      "name": "wall",
+      "aliases": ["fence", "barrier", "boundary"],
+      "description": "A simple wall or fence section",
+      "structureType": "Composite",
+      "width": 1000,
+      "depth": 30,
+      "parts": [
+        {"name": "wall_body", "shape": "cube", "offset": [0,0,100], "scale": [10,0.3,2.0], "material": "stone"},
+        {"name": "pillar_left", "shape": "cube", "offset": [-500,0,110], "scale": [0.4,0.4,2.2], "material": "stone"},
+        {"name": "pillar_right", "shape": "cube", "offset": [500,0,110], "scale": [0.4,0.4,2.2], "material": "stone"},
+        {"name": "pillar_mid", "shape": "cube", "offset": [0,0,110], "scale": [0.4,0.4,2.2], "material": "stone"},
+        {"name": "cap_left", "shape": "cube", "offset": [-500,0,225], "scale": [0.5,0.5,0.1], "material": "stone"},
+        {"name": "cap_right", "shape": "cube", "offset": [500,0,225], "scale": [0.5,0.5,0.1], "material": "stone"},
+        {"name": "cap_mid", "shape": "cube", "offset": [0,0,225], "scale": [0.5,0.5,0.1], "material": "stone"}
+      ]
     }
   ]
 }
