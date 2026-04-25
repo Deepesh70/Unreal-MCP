@@ -183,46 +183,53 @@ async def _spawn_and_scale(x, y, z, sx, sy, sz, asset=None, color_name=""):
 
 
 async def _apply_actor_color(actor_path: str, color_name: str):
-    """Apply a colored dynamic material to a spawned actor."""
+    """Apply a color to a spawned actor. Tries multiple strategies."""
     color = _MATERIAL_COLORS.get(color_name)
     if not color:
         return
+    
+    comp_path = f"{actor_path}.StaticMeshComponent0"
+    
+    # Strategy 1: Try pre-made material asset (from setup_materials.py)
+    mi_name = color_name.replace("_", " ").title().replace(" ", "")
+    mi_path = f"/Game/Materials/Colors/MI_{mi_name}.MI_{mi_name}"
     try:
-        # Get the static mesh component (standard name for StaticMeshActor)
-        comp_path = f"{actor_path}.StaticMeshComponent0"
-        # Create a dynamic material instance from the existing material
+        resp = await send_ue_ws_command(
+            object_path=comp_path,
+            function_name="SetMaterial",
+            parameters={
+                "ElementIndex": 0,
+                "Material": mi_path,
+            },
+        )
+        # If no error, material was applied successfully
+        return
+    except Exception:
+        pass  # Material asset doesn't exist, try fallback
+    
+    # Strategy 2: Create dynamic material and try setting color parameters
+    try:
         resp = await send_ue_ws_command(
             object_path=comp_path,
             function_name="CreateDynamicMaterialInstance",
-            parameters={
-                "ElementIndex": 0,
-            },
+            parameters={"ElementIndex": 0},
         )
         mat_path = resp.get("ResponseBody", {}).get("ReturnValue", "")
         if mat_path:
-            # Try setting BaseColor parameter (works if material has this param)
-            try:
-                await send_ue_ws_command(
-                    object_path=mat_path,
-                    function_name="SetVectorParameterValue",
-                    parameters={
-                        "ParameterName": "BaseColor",
-                        "ParameterValue": color,
-                    },
-                )
-            except Exception:
-                # Try "Color" parameter as fallback
+            # Try multiple parameter names that UE materials commonly use
+            for param_name in ["BaseColor", "Color", "Base Color", "Emissive Color", "EmissiveColor"]:
                 try:
                     await send_ue_ws_command(
                         object_path=mat_path,
                         function_name="SetVectorParameterValue",
                         parameters={
-                            "ParameterName": "Color",
+                            "ParameterName": param_name,
                             "ParameterValue": color,
                         },
                     )
+                    return  # Success
                 except Exception:
-                    pass
+                    continue
     except Exception:
         pass  # Color application is best-effort
 
