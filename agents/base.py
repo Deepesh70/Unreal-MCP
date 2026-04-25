@@ -43,153 +43,40 @@ DEFAULT_PROMPT = (
 TEST_PROMPT = "List all actors currently in the Unreal level."
 
 
-# ── Builder System Prompt (Delegator Architecture — CSG Spatial Reasoning) ────
+# ── Builder System Prompt (Trimmed for token efficiency) ────
 BUILDER_SYSTEM_PROMPT = """\
-You are an Unreal Engine 3D world builder. You are a spatial reasoning engine that can construct ANY real-world object by decomposing it into primitive shapes (cube, sphere, cylinder, cone).
+You are an Unreal Engine 3D builder. Output ONLY a single JSON object. No markdown, no explanation.
 
-Output ONLY a single JSON object. No markdown, no explanation, no code fences.
+RULES:
+1. Every Spawn MUST have "EnvironmentCheck":{"RequiresScan":true,"Radius":2000}
+2. Every structure needs a UNIQUE "ID" and UNIQUE "RequestedLoc" (space 1500+ UU apart)
+3. Scale 1.0 = 100 UU = 1 meter. Z=0 is ground, +Z is up.
 
-═══════════════════════════════════════════════════════
-CRITICAL RULES — EVERY Spawn/BatchSpawn MUST include:
-═══════════════════════════════════════════════════════
-1. "EnvironmentCheck": {"RequiresScan": true, "Radius": 2000} — MANDATORY on every Spawn object. This prevents buildings from spawning inside each other.
-2. Every structure MUST have a UNIQUE "ID" string.
-3. Every structure MUST have a UNIQUE "RequestedLoc" — NEVER [0,0,0] for more than one object.
-4. Space structures at least 1500 UU apart.
+STRUCTURE TYPES:
 
-═══════════════════════════════════════════════════════
-STRUCTURE TYPES (set in Parameters.StructureType):
-═══════════════════════════════════════════════════════
-
-1. "Building" — Multi-floor box with walls and roof:
-{"Intent":"Spawn","ID":"Office_01","Style":"Office_Glass","RequestedLoc":[0,0,0],
+"Composite" — Build ANY object from primitive parts:
+{"Intent":"Spawn","ID":"Car_01","RequestedLoc":[0,0,0],
 "EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
-"Parameters":{"StructureType":"Building","Floors":5,"FloorHeight":300,"BuildingWidth":1000,"BuildingDepth":1000,"WallThickness":20,"RoofType":"flat"}}
-Use for: houses, offices, apartments, skyscrapers — anything with repeating floors.
-
-2. "Solid" — Single primitive shape:
-{"Intent":"Spawn","ID":"Crate_01","Style":"Default","RequestedLoc":[500,0,0],
-"EnvironmentCheck":{"RequiresScan":true,"Radius":1000},
-"Parameters":{"StructureType":"Solid","Shape":"cube","Width":200,"Depth":200,"Height":200}}
-Shapes: cube, sphere, cylinder, cone.
-Use for: simple objects — crates, balls, pillars, boulders.
-
-3. "Bridge" — Deck on support pillars:
-{"Intent":"Spawn","ID":"Bridge_01","Style":"Bridge_Steel","RequestedLoc":[0,0,0],
-"EnvironmentCheck":{"RequiresScan":true,"Radius":3000},
-"Parameters":{"StructureType":"Bridge","Span":3000,"DeckWidth":500,"DeckThickness":30,"DeckHeight":500,"PillarWidth":150,"NumPillars":4,"Railings":true}}
-
-4. "Composite" — YOUR MOST POWERFUL TOOL. Build ANY complex object from primitives:
-{"Intent":"Spawn","ID":"Tower_01","Style":"WatchTower","RequestedLoc":[0,0,0],
-"EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
-"Parameters":{"StructureType":"Composite","Width":800,"Depth":800},
+"Parameters":{"StructureType":"Composite","Width":400,"Depth":200},
 "Parts":[
-  {"Shape":"cylinder","Offset":[0,0,0],"Scale":[3,3,8],"Label":"Tower_Body"},
-  {"Shape":"cube","Offset":[0,0,850],"Scale":[5,5,0.3],"Label":"Platform"},
-  {"Shape":"cone","Offset":[0,0,900],"Scale":[4,4,3],"Label":"Roof"},
-  {"Shape":"cube","Offset":[350,0,400],"Scale":[0.3,0.3,6],"Label":"Ladder"}
+  {"Shape":"cube","Offset":[0,0,50],"Scale":[4,2,1],"Label":"Body","material":"blue"},
+  {"Shape":"cube","Offset":[0,0,130],"Scale":[2,1.8,1],"Label":"Cabin","material":"cyan"},
+  {"Shape":"cylinder","Offset":[-120,100,20],"Scale":[0.4,0.4,0.2],"Label":"Wheel_FL","material":"black"}
 ]}
+Shapes: cube, sphere, cylinder, cone
+Materials: red, blue, green, yellow, orange, purple, cyan, white, black, gray, steel, gold, concrete, wood, stone
 
-═══════════════════════════════════════════════════════
-HOW TO BUILD ANY OBJECT (CSG Spatial Reasoning):
-═══════════════════════════════════════════════════════
-When asked to build something you've never seen, THINK step by step:
-1. What is the basic silhouette? (tall cylinder? wide box? dome?)
-2. What are the major sub-parts? (body, roof, legs, arms, base, platform)
-3. What primitive shape best approximates each part? (cube=box/panel/wall, cylinder=tube/pole/tower, sphere=dome/ball, cone=roof/point/funnel)
-4. What is each part's position relative to the base? (Offset [X,Y,Z])
-5. What is each part's scale? (Scale [SX,SY,SZ], where 1.0 = 100 UU = 1 meter)
+"Building" — Multi-floor box:
+{"Intent":"Spawn","ID":"House_01","RequestedLoc":[0,0,0],
+"EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
+"Parameters":{"StructureType":"Building","Floors":3,"FloorHeight":300,"BuildingWidth":800,"BuildingDepth":800,"WallThickness":20,"RoofType":"pointed"}}
 
-EXAMPLES of spatial decomposition:
-• Lamp Post: cylinder body [0.2,0.2,4] + sphere bulb at top [0.5,0.5,0.5]
-• Table: cube top [1.5,1,0.1] at Z=80 + 4x cylinder legs [0.1,0.1,0.8] at corners
-• Car: cube body [4,2,1] + cube cabin [2,1.8,1] at offset + 4x cylinder wheels [0.4,0.4,0.4]
-• Fountain: cylinder base [3,3,0.3] + cylinder mid [1,1,2] + sphere top [1.5,1.5,1]
-• Helicopter: cube body [3,1.5,1.5] + cylinder tail [0.3,0.3,3] + cube rotor [5,0.1,0.1] + cube tail rotor [0.1,1,0.1]
-• Tree: cylinder trunk [0.5,0.5,4] + sphere canopy [3,3,3] at Z=400
-• Chair: cube seat [0.5,0.5,0.05] + cube back [0.5,0.05,0.5] + 4x cylinder legs [0.05,0.05,0.5]
+"Solid" — Single shape:
+{"Intent":"Spawn","ID":"Rock_01","RequestedLoc":[500,0,0],
+"EnvironmentCheck":{"RequiresScan":true,"Radius":1000},
+"Parameters":{"StructureType":"Solid","Shape":"sphere","Width":200,"Depth":200,"Height":200}}
 
-═══════════════════════════════════════════════════════
-INTENTS:
-═══════════════════════════════════════════════════════
-- Spawn: create one structure
-- BatchSpawn: {"Intent":"BatchSpawn","Blueprints":[...]} — array of Spawn-like objects. Each blueprint MUST have its own EnvironmentCheck.
-- ClearAll: {"Intent":"ClearAll"}
-- Destroy: {"Intent":"Destroy","TargetID":"<id>"}
-- CreateClass: {"Action":"CreateClass","ClassName":"<AMyActor>","Files":[...]}
-- GenerateGeometry: Runtime dynamic mesh with boolean cuts (see below)
-
-═══════════════════════════════════════════════════════
-GENERATE GEOMETRY (Dynamic Mesh + Boolean Operations):
-═══════════════════════════════════════════════════════
-Use this when you need TRUE geometry modeling — walls with cut-out windows, doors with arches, panels with holes, sculpted shapes. This creates REAL mesh geometry at runtime, not just scaled cubes.
-
-{"Intent":"GenerateGeometry","ID":"SciFi_Wall_01","RequestedLoc":[0,0,0],"Color":"steel",
-"BaseShape":{"Type":"Box","Dimensions":[1000,20,500]},
-"Operations":[
-  {"Action":"BooleanSubtract","ToolShape":"Cylinder","Radius":150,"Height":50,"RelativeLoc":[0,0,250]},
-  {"Action":"BooleanSubtract","ToolShape":"Box","Dimensions":[200,50,300],"RelativeLoc":[-300,0,150]}
-]}
-
-BaseShape Types: Box (Dimensions: [W,D,H]), Cylinder (Dimensions: [Radius,Radius,Height]), Sphere (Dimensions: [Radius,Radius,Radius])
-Operation Actions: BooleanSubtract (cut hole), BooleanUnion (merge shapes), BooleanIntersect (keep overlap)
-ToolShape Types: Box, Cylinder, Sphere
-Color options: red, blue, green, yellow, orange, purple, cyan, white, black, gray, steel, gold, concrete, wood
-
-EXAMPLES:
-• Wall with circular window: BaseShape Box [1000,20,500] + BooleanSubtract Cylinder R:120 at [0,0,300]
-• Wall with door: BaseShape Box [1000,20,500] + BooleanSubtract Box [200,50,400] at [0,0,200]
-• Wall with 3 windows: BaseShape Box [1200,20,500] + 3x BooleanSubtract Cylinder at different X offsets
-• Dome with hole: BaseShape Sphere [300,300,300] + BooleanSubtract Cylinder R:100 at top
-
-═══════════════════════════════════════════════════════
-MANDATORY RULES (NEVER VIOLATE):
-═══════════════════════════════════════════════════════
-1. ANY building with floors/stories/levels MUST use StructureType "Building" — NEVER Composite.
-2. A "hut" is a 1-floor Building with RoofType "pointed". A "house" is a Building. A "cabin" is a Building.
-3. Composite is ONLY for non-building objects: vehicles, furniture, statues, trees, robots, machines.
-4. Scale 1.0 = 100 UU = 1 meter. A 3-story house is about 9 meters tall (Floors:3, FloorHeight:300).
-
-═══════════════════════════════════════════════════════
-DECISION GUIDE:
-═══════════════════════════════════════════════════════
-- house/hut/cabin/cottage/shack/bungalow → "Building" (Floors:1, RoofType:"pointed")
-- office/apartment/skyscraper/tower block → "Building" (Floors:N, RoofType:"flat")
-- any building with N stories/floors → "Building" (Floors:N)
-- single cube/sphere/cylinder/ball/rock/crate → "Solid"
-- bridge/overpass → "Bridge"
-- wall with window/door/hole/cutout/arch → GenerateGeometry
-- sculpted/carved/modeled geometry → GenerateGeometry
-- vehicle/furniture/statue/tree/robot/machine → "Composite"
-- mixed scene → BatchSpawn with varied StructureTypes
-
-═══════════════════════════════════════════════════════
-BUILDING EXAMPLES:
-═══════════════════════════════════════════════════════
-• 3-story house with pointed roof:
-  {"Intent":"Spawn","ID":"House_01","Style":"Residential","RequestedLoc":[0,0,0],
-   "EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
-   "Parameters":{"StructureType":"Building","Floors":3,"FloorHeight":300,"BuildingWidth":800,"BuildingDepth":800,"WallThickness":20,"RoofType":"pointed"}}
-
-• Hut:
-  {"Intent":"Spawn","ID":"Hut_01","Style":"Wooden","RequestedLoc":[0,0,0],
-   "EnvironmentCheck":{"RequiresScan":true,"Radius":1000},
-   "Parameters":{"StructureType":"Building","Floors":1,"FloorHeight":250,"BuildingWidth":400,"BuildingDepth":400,"WallThickness":15,"RoofType":"pointed"}}
-
-• Skyscraper:
-  {"Intent":"Spawn","ID":"Tower_01","Style":"Office_Glass","RequestedLoc":[0,0,0],
-   "EnvironmentCheck":{"RequiresScan":true,"Radius":3000},
-   "Parameters":{"StructureType":"Building","Floors":20,"FloorHeight":300,"BuildingWidth":1200,"BuildingDepth":1200,"WallThickness":30,"RoofType":"flat"}}
-
-POSITIONING:
-- 1000 UU = 10 meters. Z=0 is ground. Positive Z = up.
-- For BatchSpawn: calculate positions so structures form the requested layout (row, circle, grid, etc.)
-
-SCALE REFERENCE (Scale 1.0 = 100 UU ≈ 1 meter):
-- Person height: Z=1.8 | Door: [1,0.1,2] | Table: [1.5,1,0.8]
-- Wall segment: [10,0.2,3] | Pillar: [0.5,0.5,5]
-- Small house: Building with Width=800,Depth=800,Floors=2 | Hut: Width=400,Depth=400,Floors=1
-- Skyscraper: Width=1200,Depth=1200,Floors=20
+OTHER: ClearAll: {"Intent":"ClearAll"} | Destroy: {"Intent":"Destroy","TargetID":"<id>"} | BatchSpawn: {"Intent":"BatchSpawn","Blueprints":[...]}
 
 Output raw JSON only."""
 
@@ -374,17 +261,14 @@ async def _run_builder(llm, prompt: str):
         raw = _recipe_to_json(recipe, prompt)
         print(f"📦 Recipe JSON:\n{raw}\n")
         
-        # Force recipe composites through LEGACY path (individual actors)
-        # C++ HISM merges all same-mesh instances into one visual entity = ugly single block
+        # Force ALL recipes through LEGACY path (individual actors per part)
+        # C++ HISM has issues: wrong floor counts, no per-part colors, single-block visual
         data = _json.loads(raw)
-        if data.get("Parameters", {}).get("StructureType") == "Composite":
-            from agents.processor import _handle_spawn_fallback
-            print("🔧 Using direct-spawn mode for recipe (individual actors per part)")
-            result = await _handle_spawn_fallback(data)
-            print(f"\n{result}")
-            return
-        
-        result = await process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API, user_prompt=prompt)
+        from agents.processor import _handle_spawn_fallback
+        struct_type = data.get("Parameters", {}).get("StructureType", "Composite")
+        floors = data.get("Parameters", {}).get("Floors", "?")
+        print(f"🔧 Direct-spawn: {struct_type} | Floors: {floors}")
+        result = await _handle_spawn_fallback(data)
         print(f"\n{result}")
         return
 
