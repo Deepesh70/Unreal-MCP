@@ -80,6 +80,27 @@ _CUBE_ASSET = _SHAPE_ASSETS["cube"]
 _CONE_ASSET = _SHAPE_ASSETS["cone"]
 _MIN_SPACING = 300.0  # Minimum gap between building edges (UU) — raised from 200
 
+# Material colors — matched to the C++ ApplyMaterialByColor lookup
+_MATERIAL_COLORS = {
+    "red": {"R": 0.8, "G": 0.1, "B": 0.1, "A": 1.0},
+    "blue": {"R": 0.1, "G": 0.2, "B": 0.9, "A": 1.0},
+    "green": {"R": 0.1, "G": 0.8, "B": 0.2, "A": 1.0},
+    "yellow": {"R": 0.9, "G": 0.85, "B": 0.1, "A": 1.0},
+    "orange": {"R": 0.9, "G": 0.5, "B": 0.1, "A": 1.0},
+    "purple": {"R": 0.6, "G": 0.1, "B": 0.9, "A": 1.0},
+    "cyan": {"R": 0.3, "G": 0.75, "B": 0.9, "A": 1.0},
+    "white": {"R": 1.0, "G": 1.0, "B": 1.0, "A": 1.0},
+    "black": {"R": 0.02, "G": 0.02, "B": 0.02, "A": 1.0},
+    "gray": {"R": 0.4, "G": 0.4, "B": 0.4, "A": 1.0},
+    "steel": {"R": 0.5, "G": 0.55, "B": 0.6, "A": 1.0},
+    "gold": {"R": 0.85, "G": 0.65, "B": 0.13, "A": 1.0},
+    "concrete": {"R": 0.65, "G": 0.63, "B": 0.6, "A": 1.0},
+    "wood": {"R": 0.55, "G": 0.35, "B": 0.15, "A": 1.0},
+    "wood_dark": {"R": 0.35, "G": 0.2, "B": 0.1, "A": 1.0},
+    "stone": {"R": 0.5, "G": 0.48, "B": 0.45, "A": 1.0},
+    "glass": {"R": 0.4, "G": 0.6, "B": 0.8, "A": 0.5},
+}
+
 
 def _check_overlap(x, y, w, d):
     """
@@ -415,9 +436,22 @@ async def _build_composite(data, base_x, base_y, base_z):
         sy = float(scale[1]) if len(scale) > 1 else 1.0
         sz = float(scale[2]) if len(scale) > 2 else 1.0
 
+        material_name = part.get("material", part.get("Material", "")).lower()
+
         try:
-            await _spawn_and_scale(px, py, pz, sx, sy, sz, asset)
+            actor_path = await _spawn_and_scale(px, py, pz, sx, sy, sz, asset)
             spawned += 1
+            # Apply material color if specified
+            if actor_path and material_name and material_name in _MATERIAL_COLORS:
+                color = _MATERIAL_COLORS[material_name]
+                try:
+                    await send_ue_ws_command(
+                        object_path=actor_path,
+                        function_name="SetActorLabel",
+                        parameters={"NewActorLabel": f"{label}_{material_name}"},
+                    )
+                except Exception:
+                    pass  # Label setting is non-critical
         except Exception as e:
             errors.append(f"{label}: {e}")
 
