@@ -78,3 +78,34 @@ async def send_ue_ws_command(
         if "1225" in error_str or "10061" in error_str or "refused" in error_str.lower():
             raise Exception("Unreal Engine API is offline. Please start Unreal Engine and ensure the Remote Control Web Interface plugin is enabled.")
         raise Exception(f"WebSocket Error: {error_str}")
+
+
+async def send_ue_ws_property(
+    object_path: str,
+    property_name: str,
+    property_value,
+) -> dict:
+    """
+    Set a property on a UObject via Unreal's Remote Control WebSocket.
+    Uses /remote/object/property endpoint.
+    """
+    payload = {
+        "MessageName": "http",
+        "Parameters": {
+            "Url": "/remote/object/property",
+            "Verb": "PUT",
+            "Body": {
+                "objectPath": object_path,
+                "propertyName": property_name,
+                "propertyValue": property_value,
+            },
+        },
+    }
+
+    try:
+        async with websockets.connect(UE_WS_URL, ping_timeout=120, close_timeout=120) as ws:
+            await ws.send(json.dumps(payload))
+            response_str = await ws.recv()
+            return json.loads(response_str)
+    except Exception:
+        return {}  # Property setting is non-critical
