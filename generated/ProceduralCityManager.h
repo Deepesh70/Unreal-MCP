@@ -17,7 +17,6 @@
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "GeometryScript/MeshBooleanFunctions.h"
 #include "Components/DynamicMeshComponent.h"
-#include "DynamicMeshActor.h"
 #include "UDynamicMesh.h"
 
 #include "ProceduralCityManager.generated.h"
