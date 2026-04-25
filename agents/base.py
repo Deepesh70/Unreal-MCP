@@ -242,10 +242,139 @@ async def run_agent(llm, model_label: str, prompt: str = None,
 #  Builder Mode — Direct LLM Call (no LangChain overhead)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+import json as _json
+import os as _os
+
+# ── Recipe Store — Pre-defined building templates ────────────────────
+_RECIPE_DB = None
+
+def _load_recipes():
+    """Load the building recipe database from recipes/buildings.json."""
+    global _RECIPE_DB
+    if _RECIPE_DB is not None:
+        return _RECIPE_DB
+    recipe_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "recipes", "buildings.json")
+    if _os.path.exists(recipe_path):
+        with open(recipe_path, "r", encoding="utf-8") as f:
+            _RECIPE_DB = _json.load(f).get("recipes", [])
+        print(f"📚 Loaded {len(_RECIPE_DB)} building recipes")
+    else:
+        _RECIPE_DB = []
+    return _RECIPE_DB
+
+
+def _find_recipe(user_prompt: str):
+    """Search recipes for a match based on name or aliases."""
+    recipes = _load_recipes()
+    prompt_lower = user_prompt.lower()
+    
+    best_match = None
+    for recipe in recipes:
+        # Check exact name match
+        if recipe["name"] in prompt_lower:
+            best_match = recipe
+            break
+        # Check aliases
+        for alias in recipe.get("aliases", []):
+            if alias.replace("_", " ") in prompt_lower:
+                best_match = recipe
+                break
+        if best_match:
+            break
+    
+    return best_match
+
+
+def _enrich_prompt_with_recipe(user_prompt: str) -> str:
+    """If a recipe matches, inject it into the prompt so the LLM uses exact parts."""
+    recipe = _find_recipe(user_prompt)
+    if not recipe:
+        return user_prompt
+    
+    print(f"📐 Recipe matched: '{recipe['name']}' ({len(recipe.get('parts', recipe.get('decorations', [])))} parts)")
+def _recipe_to_json(recipe: dict, user_prompt: str) -> str:
+    """Convert a recipe directly to Spawn JSON — no LLM needed."""
+    import re
+    
+    # Try to extract location from user prompt like "at 500 0 0"
+    loc = [0, 0, 0]
+    loc_match = re.search(r'at\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)', user_prompt)
+    if loc_match:
+        loc = [int(loc_match.group(1)), int(loc_match.group(2)), int(loc_match.group(3))]
+    
+    # Try to extract floor count like "3-story" or "5 floor"
+    floors = recipe.get("defaultFloors", 1)
+    floor_match = re.search(r'(\d+)\s*(?:stor|floor|level)', user_prompt.lower())
+    if floor_match:
+        floors = int(floor_match.group(1))
+    
+    structure_type = recipe.get("structureType", "Composite")
+    name = recipe["name"]
+    
+    if structure_type == "Building":
+        result = {
+            "Intent": "Spawn",
+            "ID": f"{name.title()}_01",
+            "Style": recipe.get("aliases", [name])[0] if recipe.get("aliases") else name,
+            "RequestedLoc": loc,
+            "EnvironmentCheck": {"RequiresScan": True, "Radius": 2000},
+            "Parameters": {
+                "StructureType": "Building",
+                "Floors": floors,
+                "FloorHeight": recipe.get("floorHeight", 300),
+                "BuildingWidth": recipe.get("width", 800),
+                "BuildingDepth": recipe.get("depth", 800),
+                "WallThickness": recipe.get("wallThickness", 20),
+                "RoofType": recipe.get("roofType", "flat"),
+            }
+        }
+        # Add decorations as Parts if the recipe has them
+        if recipe.get("decorations"):
+            result["Parts"] = recipe["decorations"]
+    else:
+        # Composite — use parts directly
+        result = {
+            "Intent": "Spawn",
+            "ID": f"{name.title()}_01",
+            "Style": name.title(),
+            "RequestedLoc": loc,
+            "EnvironmentCheck": {"RequiresScan": True, "Radius": 2000},
+            "Parameters": {
+                "StructureType": "Composite",
+                "Width": recipe.get("width", 400),
+                "Depth": recipe.get("depth", 400),
+            },
+            "Parts": [
+                {
+                    "Shape": p["shape"],
+                    "Offset": p["offset"],
+                    "Scale": p["scale"],
+                    "Label": p["name"],
+                    "material": p.get("material", ""),
+                }
+                for p in recipe.get("parts", [])
+            ]
+        }
+    
+    return _json.dumps(result)
+
+
 async def _run_builder(llm, prompt: str):
     """Call the LLM directly with the builder system prompt, then route JSON to processor."""
     print(f"\n🗣️ Prompt: {prompt}\n")
 
+    # Check if we have a recipe — if so, bypass the LLM entirely
+    recipe = _find_recipe(prompt)
+    if recipe:
+        parts_count = len(recipe.get('parts', recipe.get('decorations', [])))
+        print(f"📐 Recipe matched: '{recipe['name']}' ({parts_count} parts) — bypassing LLM")
+        raw = _recipe_to_json(recipe, prompt)
+        print(f"📦 Recipe JSON:\n{raw}\n")
+        result = await process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API, user_prompt=prompt)
+        print(f"\n{result}")
+        return
+
+    # No recipe — use LLM
     messages = [
         SystemMessage(content=BUILDER_SYSTEM_PROMPT),
         HumanMessage(content=prompt),
