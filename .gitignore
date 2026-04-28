@@ -47,3 +47,7 @@ data/
 
 graphify-out/
 graphify.md
+.gitnexus
+AGENTS.md
+CLAUDE.md
+.claude/
