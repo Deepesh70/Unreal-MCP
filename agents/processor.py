@@ -3,7 +3,9 @@ Processor — Routes LLM JSON output to the correct action.
 
 The LLM outputs strict JSON. Routing is based on:
   - "Intent" field (new Delegator architecture):
-      Spawn / BatchSpawn / Modify / Destroy / ClearAll / ScanArea
+      Spawn / BatchSpawn / Modify / Destroy / ClearAll / ScanArea /
+      GenerateGeometry / QueryBuilding / Flatten / Sculpt / Connect /
+      SpawnBlueprint / Screenshot
       → forwarded to AProceduralCityManager via a SINGLE WebSocket call
   - "Action" field (legacy):
       "CreateClass" → Write .h/.cpp files to disk
@@ -563,6 +565,54 @@ async def _handle_intent_with_fallback(data: dict) -> str:
         return f"⚠️  ScanArea is not available in legacy mode (no spatial awareness)."
     elif intent == "GenerateGeometry":
         return f"⚠️  GenerateGeometry requires C++ Geometry Scripting (no legacy fallback). Place a CityManager in your level."
+    elif intent == "QueryBuilding":
+        return f"⚠️  QueryBuilding requires C++ CityManager. Place one in your level."
+    elif intent == "Flatten":
+        # Legacy fallback: spawn a flat cube platform
+        center = data.get("Center", [0, 0, 0])
+        radius = data.get("Radius", 2000)
+        scale_xy = radius / 50.0
+        try:
+            result = await _spawn_and_scale(
+                center[0], center[1], center[2] - 5,
+                scale_xy, scale_xy, 0.1,
+                asset=_CUBE_ASSET, color_name="concrete"
+            )
+            return f"✅ Legacy Flatten: spawned platform at ({center[0]:.0f}, {center[1]:.0f}, {center[2]:.0f})"
+        except Exception as e:
+            return f"❌ Legacy Flatten failed: {e}"
+    elif intent == "Sculpt":
+        return f"⚠️  Sculpt requires C++ CityManager (no legacy fallback)."
+    elif intent == "Connect":
+        # Legacy fallback: spawn flat cubes between nodes
+        nodes = data.get("Nodes", [])
+        width = data.get("Width", 300)
+        if len(nodes) < 2:
+            return "❌ Connect needs at least 2 nodes."
+        spawned = 0
+        for i in range(len(nodes) - 1):
+            start = nodes[i]
+            end = nodes[i + 1]
+            mid_x = (start[0] + end[0]) / 2
+            mid_y = (start[1] + end[1]) / 2
+            mid_z = (start[2] + end[2]) / 2
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            seg_len = (dx*dx + dy*dy) ** 0.5
+            try:
+                await _spawn_and_scale(
+                    mid_x, mid_y, mid_z + 1,
+                    seg_len / 100, width / 100, 0.1,
+                    asset=_CUBE_ASSET, color_name="concrete"
+                )
+                spawned += 1
+            except Exception:
+                pass
+        return f"✅ Legacy Connect: {spawned} road segment(s) spawned."
+    elif intent == "SpawnBlueprint":
+        return f"⚠️  SpawnBlueprint requires C++ CityManager (no legacy fallback)."
+    elif intent == "Screenshot":
+        return f"⚠️  Screenshot requires C++ CityManager (no legacy fallback)."
     else:
         return f"⚠️  Unknown intent '{intent}' in legacy fallback mode."
 
@@ -708,6 +758,38 @@ def _validate_intent_schema(data: dict) -> tuple:
             if "ToolShape" not in op:
                 return False, f"Operations[{i}] requires a 'ToolShape' field"
 
+    elif intent == "QueryBuilding":
+        if "TargetID" not in data or not data["TargetID"]:
+            return False, "QueryBuilding requires a non-empty 'TargetID' field"
+
+    elif intent == "Flatten":
+        center = data.get("Center")
+        if center is not None:
+            if not isinstance(center, list) or len(center) < 3:
+                return False, "Flatten.Center must be an array of 3 numbers"
+
+    elif intent == "Sculpt":
+        center = data.get("Center")
+        if center is not None:
+            if not isinstance(center, list) or len(center) < 3:
+                return False, "Sculpt.Center must be an array of 3 numbers"
+
+    elif intent == "Connect":
+        if "ID" not in data or not data["ID"]:
+            return False, "Connect requires a non-empty 'ID' field"
+        nodes = data.get("Nodes")
+        if not isinstance(nodes, list) or len(nodes) < 2:
+            return False, "Connect requires a 'Nodes' array with at least 2 waypoints"
+
+    elif intent == "SpawnBlueprint":
+        if "ID" not in data or not data["ID"]:
+            return False, "SpawnBlueprint requires a non-empty 'ID' field"
+        if "BlueprintKey" not in data or not data["BlueprintKey"]:
+            return False, "SpawnBlueprint requires a non-empty 'BlueprintKey' field"
+
+    elif intent == "Screenshot":
+        pass  # No required fields
+
     else:
         return False, f"Unknown Intent: '{intent}'"
 
@@ -822,6 +904,79 @@ def reset_manager_cache():
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Feature 1: Relational Location Resolution
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+async def _resolve_relational_location(data: dict) -> dict:
+    """
+    If the Spawn intent has a 'Relation' field, query the target building
+    from the C++ Ledger and compute absolute coordinates.
+
+    Relation format:
+        {"TargetID": "House_01", "Side": "Right", "Gap": 200}
+
+    Supported sides: Right, Left, Front, Behind, OnTop
+    """
+    relation = data.get("Relation", {})
+    if not relation or not isinstance(relation, dict):
+        return data
+
+    target_id = relation.get("TargetID", "")
+    side = relation.get("Side", "Right").lower()
+    gap = float(relation.get("Gap", 200))
+
+    if not target_id:
+        log.warning("Relation missing TargetID — using RequestedLoc")
+        return data
+
+    # Query the target building from C++
+    query_data = {"Intent": "QueryBuilding", "TargetID": target_id}
+    try:
+        manager_path = await _discover_city_manager()
+        json_payload = json.dumps(query_data, separators=(",", ":"))
+        response = await send_ue_ws_command(
+            object_path=manager_path,
+            function_name="ProcessBlueprint",
+            parameters={"JsonPayload": json_payload},
+        )
+        receipt_str = response.get("ResponseBody", {}).get("ReturnValue", "")
+        receipt = json.loads(receipt_str)
+    except Exception as e:
+        log.warning("Relational query failed for '%s': %s", target_id, e)
+        return data
+
+    if receipt.get("Status") != "Found":
+        log.warning("Target '%s' not found in Ledger — using RequestedLoc", target_id)
+        return data
+
+    loc = receipt.get("Location", [0, 0, 0])
+    extents = receipt.get("Extents", [500, 500, 300])
+
+    # Compute the new location based on the side
+    new_loc = list(loc)
+    if side == "right":
+        new_loc[0] = loc[0] + extents[0] + gap
+    elif side == "left":
+        new_loc[0] = loc[0] - extents[0] - gap
+    elif side == "front":
+        new_loc[1] = loc[1] + extents[1] + gap
+    elif side in ("behind", "back"):
+        new_loc[1] = loc[1] - extents[1] - gap
+    elif side in ("ontop", "above"):
+        new_loc[2] = loc[2] + extents[2] * 2 + gap
+    else:
+        # Default: place to the right
+        new_loc[0] = loc[0] + extents[0] + gap
+
+    data["RequestedLoc"] = new_loc
+    log.info("Relational: '%s' %s of '%s' → loc (%d, %d, %d)",
+             data.get("ID", "?"), side, target_id,
+             new_loc[0], new_loc[1], new_loc[2])
+
+    return data
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Unreal Intent Handler — The Single WebSocket Call
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -923,6 +1078,25 @@ def _format_receipt(receipt: dict) -> str:
         lines.append(f"   Status: {status}")
         return "\n".join(lines)
 
+    elif action == "QueryResult":
+        building_id = receipt.get("ID", "")
+        if status == "Found":
+            loc = receipt.get("Location", [0, 0, 0])
+            ext = receipt.get("Extents", [0, 0, 0])
+            style = receipt.get("StyleKey", "?")
+            count = receipt.get("InstanceCount", 0)
+            return (
+                f"🔍 Query '{building_id}': Style={style}, "
+                f"Loc=({loc[0]:.0f},{loc[1]:.0f},{loc[2]:.0f}), "
+                f"Extents=({ext[0]:.0f},{ext[1]:.0f},{ext[2]:.0f}), "
+                f"{count} instances"
+            )
+        return f"❌ QueryBuilding failed for '{building_id}': {receipt.get('Reason', '')}"
+
+    elif action == "ScreenshotResult":
+        filepath = receipt.get("FilePath", "")
+        return f"📸 Screenshot: {status} — {filepath}"
+
     return f"📦 Receipt: {json.dumps(receipt, indent=2)}"
 
 
@@ -990,25 +1164,43 @@ async def process_agent_output(raw_content: str, output_dir: str, project_api: s
         action = "CreateClass"
         data["Action"] = action
 
-    # ── Auto-deduplicate IDs (prevent "already exists" rejections) ──
-    if intent in ("Spawn", "BatchSpawn", "GenerateGeometry"):
-        _deduplicate_ids(data)
 
     # ── 4. Route to the correct handler ─────────────────────────────
     if action == "CreateClass":
         return _handle_create_class(data, output_dir, project_api)
 
-    if intent in ("Spawn", "BatchSpawn", "Modify", "Destroy", "ClearAll", "ScanArea", "GenerateGeometry"):
+    # ── All known intents ────────────────────────────────────────────
+    _ALL_INTENTS = (
+        "Spawn", "BatchSpawn", "Modify", "Destroy", "ClearAll", "ScanArea",
+        "GenerateGeometry", "QueryBuilding", "Flatten", "Sculpt",
+        "Connect", "SpawnBlueprint", "Screenshot",
+    )
+
+    if intent in _ALL_INTENTS:
+        # ── Feature 1: Resolve relational placement before forwarding ──
+        if intent == "Spawn" and "Relation" in data:
+            try:
+                data = await _resolve_relational_location(data)
+            except Exception as e:
+                log.warning("Relational resolution failed: %s — using RequestedLoc", e)
+
         # Validate the schema before forwarding
         valid, error = _validate_intent_schema(data)
         if not valid:
             return f"❌ Schema Validation Error: {error}"
+
+        # Auto-deduplicate IDs for ID-bearing intents
+        if intent in ("Spawn", "BatchSpawn", "GenerateGeometry", "Connect", "SpawnBlueprint"):
+            _deduplicate_ids(data)
+
         # Try C++ delegator, fall back to legacy if no CityManager
         return await _handle_intent_with_fallback(data)
 
     return (
         f"⚠️  Unknown Action/Intent: '{action or intent}'.\n"
-        f"   Expected: CreateClass, Spawn, BatchSpawn, Modify, Destroy, ClearAll, or ScanArea."
+        f"   Expected: CreateClass, Spawn, BatchSpawn, Modify, Destroy, ClearAll,\n"
+        f"   ScanArea, GenerateGeometry, QueryBuilding, Flatten, Sculpt,\n"
+        f"   Connect, SpawnBlueprint, or Screenshot."
     )
 
 

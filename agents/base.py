@@ -76,7 +76,29 @@ Materials: red, blue, green, yellow, orange, purple, cyan, white, black, gray, s
 "EnvironmentCheck":{"RequiresScan":true,"Radius":1000},
 "Parameters":{"StructureType":"Solid","Shape":"sphere","Width":200,"Depth":200,"Height":200}}
 
-OTHER: ClearAll: {"Intent":"ClearAll"} | Destroy: {"Intent":"Destroy","TargetID":"<id>"} | BatchSpawn: {"Intent":"BatchSpawn","Blueprints":[...]}
+RELATIONAL PLACEMENT (preferred over absolute coordinates for 2nd+ buildings):
+Instead of guessing coordinates, reference an existing building:
+{"Intent":"Spawn","ID":"Garage_01",
+"Relation":{"TargetID":"House_01","Side":"Right","Gap":200},
+"EnvironmentCheck":{"RequiresScan":true,"Radius":2000},
+"Parameters":{"StructureType":"Building","Floors":1,"BuildingWidth":600,"BuildingDepth":600}}
+Sides: Right, Left, Front, Behind, OnTop
+
+TERRAIN:
+Flatten: {"Intent":"Flatten","ID":"Plat_01","Center":[0,0,0],"Radius":3000}
+Sculpt:  {"Intent":"Sculpt","ID":"Hill_01","Center":[0,0,0],"Radius":1000,"DeltaZ":500}
+
+ROADS:
+Connect: {"Intent":"Connect","ID":"Road_01","Nodes":[[0,0,0],[1000,0,0],[2000,500,0]],"Width":300}
+
+BLUEPRINTS:
+SpawnBlueprint: {"Intent":"SpawnBlueprint","ID":"Light_01","BlueprintKey":"StreetLight_BP",
+"RequestedLoc":[0,0,0],"Properties":{"LightColor":"NeonPink","Intensity":5000}}
+
+OTHER:
+ClearAll:  {"Intent":"ClearAll"}
+Destroy:   {"Intent":"Destroy","TargetID":"<id>"}
+BatchSpawn:{"Intent":"BatchSpawn","Blueprints":[...]}
 
 Output raw JSON only."""
 
@@ -296,12 +318,18 @@ async def _interactive_builder_loop(llm, model_label: str):
     print(f"{'='*60}")
     print(f"\n  Quick commands to try:")
     print(f"    • build a 5 floor skyscraper at 0 0 0")
-    print(f"    • build a street with houses on both sides")
+    print(f"    • build a house, then add a garage to the right of it")
+    print(f"    • build a street with houses and connect them with roads")
     print(f"    • clear everything")
     print(f"    • create a freeze trap C++ class")
     print(f"  Utility commands:")
-    print(f"    • refresh  — re-discover the CityManager actor")
+    print(f"    • refresh      — re-discover the CityManager actor")
+    print(f"    • screenshot   — capture the UE viewport")
+    print(f"    • refine       — auto-critique + fix the scene")
+    print(f"    • hierarchy    — force hierarchical (Mayor/Architect) mode")
     print(f"\n")
+
+    _last_prompt = ""
 
     while True:
         try:
@@ -319,6 +347,69 @@ async def _interactive_builder_loop(llm, model_label: str):
             reset_manager_cache()
             print("🔄 CityManager cache cleared. Will re-discover on next command.")
             continue
+
+        # Feature 3: Screenshot command
+        if user_input.lower() == "screenshot":
+            try:
+                from agents.vision import capture_screenshot
+                filepath = await capture_screenshot()
+                print(filepath)
+            except Exception as e:
+                print(f"❌ Screenshot error: {e}")
+            continue
+
+        # Feature 3: Auto-refine command
+        if user_input.lower() == "refine":
+            if not _last_prompt:
+                print("⚠️  No previous build to refine. Build something first.")
+                continue
+            try:
+                from agents.vision import auto_refine
+                result = await auto_refine(llm, _last_prompt, 
+                    lambda raw: process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API))
+                print(result)
+            except Exception as e:
+                print(f"❌ Refine error: {e}")
+            continue
+
+        # Feature 6: Force hierarchical mode
+        if user_input.lower().startswith("hierarchy"):
+            actual_prompt = user_input[len("hierarchy"):].strip()
+            if not actual_prompt:
+                actual_prompt = input("  Enter the city prompt: ").strip()
+            if actual_prompt:
+                try:
+                    from agents.hierarchy import run_hierarchical
+                    result = await run_hierarchical(
+                        llm, actual_prompt,
+                        lambda raw: process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API),
+                        model_label=model_label
+                    )
+                    print(result)
+                    _last_prompt = actual_prompt
+                except Exception as e:
+                    print(f"❌ Hierarchy error: {e}")
+            continue
+
+        # Feature 6: Auto-detect hierarchy-worthy prompts
+        try:
+            from agents.hierarchy import should_use_hierarchy
+            if should_use_hierarchy(user_input):
+                print("🏢 Large scene detected — activating hierarchical mode...")
+                from agents.hierarchy import run_hierarchical
+                result = await run_hierarchical(
+                    llm, user_input,
+                    lambda raw: process_agent_output(raw, CPP_OUTPUT_DIR, PROJECT_API),
+                    model_label=model_label
+                )
+                print(result)
+                _last_prompt = user_input
+                print()
+                continue
+        except ImportError:
+            pass  # hierarchy module not available
+
+        _last_prompt = user_input
 
         try:
             await _run_builder(llm, user_input)

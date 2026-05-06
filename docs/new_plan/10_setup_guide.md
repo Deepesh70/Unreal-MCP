@@ -182,6 +182,21 @@ After running a build command:
 
 ---
 
+## Step 8: Run the Web UI Backend (Optional)
+
+If you prefer a graphical interface over the CLI, you can run the FastAPI backend which provides a WebSocket connection for a Next.js frontend dashboard.
+
+Open a terminal:
+
+```bash
+cd Unreal-MCP
+uvicorn api_server:app --port 8000
+```
+
+*See [11_web_ui.md](./11_web_ui.md) for more details on the Web UI architecture and connection protocol.*
+
+---
+
 ## Troubleshooting
 
 ### "Unreal Engine API is offline"
@@ -282,6 +297,7 @@ The cloud server sends WebSocket commands to your local Unreal Editor through th
 Unreal-MCP/
 ├── server.py                  ← MCP server entry point
 ├── agent.py                   ← CLI launcher
+├── api_server.py              ← Web UI FastAPI backend
 ├── .env                       ← API keys + project config
 ├── requirements.txt
 │
@@ -310,6 +326,7 @@ Unreal-MCP/
     │   ├── 00_overview.md
     │   ├── 01_the_journey.md
     │   ├── ...
-    │   └── 10_setup_guide.md
+    │   ├── 10_setup_guide.md
+    │   └── 11_web_ui.md       ← Web UI & API architecture
     └── ARCHITECTURE.md        ← Original architecture docs
 ```

@@ -18,16 +18,16 @@ Connect LLM agents to Unreal Engine through the Model Context Protocol. Give nat
 ## Installation
 
 ```bash
-# 1. Clone / switch to the branch you want
-git checkout ue-docs-intgr   # for C++ codegen features
-# or
-git checkout main             # for live scene building only
+# 1. Clone the repository
+git clone https://github.com/your-username/Unreal-MCP.git
+cd Unreal-MCP
 
 # 2. Install Python dependencies
 pip install -r requirements.txt
 
 # 3. Set up your environment file
-copy .env.example .env
+copy .env.example .env   # Windows
+# cp .env.example .env   # macOS / Linux
 ```
 
 Open `.env` and fill in the keys for the provider you want to use:
@@ -39,6 +39,15 @@ GOOGLE_API_KEY=your_google_api_key_here
 # Ollama needs no key — just have Ollama running locally
 ```
 
+Additional optional variables in `.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `UE_WS_URL` | `ws://127.0.0.1:30020` | WebSocket address of Unreal Remote Control |
+| `CPP_OUTPUT_DIR` | `./generated` | Where generated `.h`/`.cpp` files are written |
+| `PROJECT_API` | _(none)_ | Your project's API export macro (e.g. `MYPROJECT_API`) |
+| `UE_PROJECT_MODULE` | _(none)_ | Your Unreal project module name |
+
 ---
 
 ## Configuration (for C++ codegen only)
@@ -46,19 +55,20 @@ GOOGLE_API_KEY=your_google_api_key_here
 If you want the agent to write and compile Unreal C++ code, open `unreal_mcp/config/settings.py` and set your machine-specific paths:
 
 ```python
-UE_PROJECT_NAME = "YourProjectName"           # Must match your Source/ folder name
-UE_PROJECT_ROOT = r"C:\Path\To\YourProject"
-UE_ENGINE_PATH  = r"D:\Epic\UE_5.5"
-UE_EXPORT_MACRO = "YOURPROJECT_API"           # From your project's Build.cs
+UE_PROJECT_NAME = "Unreal MCP"           # Must match your Source/ folder name
+UE_PROJECT_ROOT = r"C:\Users\Deepesh\Desktop\Unreal MCP"         # your project root directory
+UE_ENGINE_PATH  = r"D:\Epic\UE_5.5"             # Your Unreal Engine installation directory
+UE_EXPORT_MACRO = "UNREALMCP_API"         # This should be the name of your project
 ```
 
-> **Skip this block entirely if you only want live scene building** (`--build` mode). It connects over WebSocket only and needs no paths configured.
+> **Skip this block entirely if you only want live scene building.** Scene building connects over WebSocket only and needs no paths configured.
 
 ---
 
 ## Running the Project
 
 ### Step 1 — Open Unreal Editor
+
 Launch your project in Unreal Engine. The Remote Control WebSocket starts automatically on `ws://127.0.0.1:30020`.
 
 ### Step 2 — Start the MCP Server (separate terminal)
@@ -67,31 +77,66 @@ Launch your project in Unreal Engine. The Remote Control WebSocket starts automa
 python server.py
 ```
 
-You should see the server start on `http://localhost:8000`. Keep this terminal open.
+You should see the server start on `http://localhost:8000`. **Keep this terminal open.**
 
 ### Step 3 — Run the Agent (another terminal)
 
-Pick your backend (`groq`, `gemini`, or `ollama`) and a mode:
+Pick your **backend** (`groq`, `gemini`, or `ollama`) and a **mode**:
 
 ```bash
-# Quickest test — lists actors in your scene
+# Quick connection test — lists actors in your scene (1 API call)
 python agent.py groq --test
 
-# Interactive scene building (type commands one by one)
-python agent.py groq --build -i
+# Interactive scene building — type commands one by one
+python agent.py groq --interactive
 
-# One-shot scene build
-python agent.py groq --build --prompt "spawn 3 cubes in a row at the origin"
+# One-shot scene build with a custom prompt
+python agent.py groq --prompt "spawn 3 cubes in a row at the origin"
 
-# Generate a C++ class (dry run — no files written, no compile)
-python agent.py groq --two-phase --dry-run --prompt "Create a HealthComponent with a float CurrentHealth property"
+# Builder mode (C++ Procedural Architect) — interactive
+python agent.py groq --builder --interactive
+# shorthand:
+python agent.py groq -b -i
 
-# Generate a C++ class, write files, and compile
-python agent.py groq --two-phase --prompt "Create a HealthComponent with a float CurrentHealth property"
+# Builder mode with a one-shot prompt
+python agent.py groq --builder --prompt "Create a HealthComponent with a float CurrentHealth property"
 
-# Full pipeline: generate code + compile + place in scene
-python agent.py groq --orchestrate --prompt "Create a C++ LaserTrap actor and place 2 in the scene"
+# Run a backend module directly (advanced)
+python -m agents.groq_agent
+python -m agents.gemini_agent --model gemini-2.5-flash
+python -m agents.ollama_agent --model qwen2.5:72b
 ```
+
+---
+
+## Agent CLI Reference
+
+```
+python agent.py <backend> [options]
+```
+
+### Backends
+
+| Backend | Model | Notes |
+|---|---|---|
+| `groq` | Llama 3.3 70B | Fast, free tier available. Requires `GROQ_API_KEY` |
+| `gemini` | Gemini 2.5 Pro | Requires `GOOGLE_API_KEY` |
+| `ollama` | llama3.3:70b (local) | No API key needed. Requires Ollama running locally |
+
+### Modes
+
+| Flag | Description |
+|---|---|
+| _(default)_ | Standard MCP mode — spawn, list, and scale actors |
+| `--builder`, `-b` | C++ Procedural Architect mode |
+
+### Options
+
+| Flag | Description |
+|---|---|
+| `--test` | Quick test — 1 API call, lists actors currently in scene |
+| `--interactive`, `-i` | Chat mode — type commands one by one |
+| `--prompt "..."` | Run a single custom prompt and exit |
 
 ---
 
@@ -100,26 +145,47 @@ python agent.py groq --orchestrate --prompt "Create a C++ LaserTrap actor and pl
 | Goal | Command |
 |---|---|
 | Verify connection to Unreal | `python agent.py groq --test` |
-| Interactive scene building | `python agent.py groq --build -i` |
-| One-shot prompt | `python agent.py groq --build --prompt "..."` |
-| Preview C++ generation | `python agent.py groq --two-phase --dry-run --prompt "..."` |
-| Generate + compile C++ | `python agent.py groq --two-phase --prompt "..."` |
-| Generate + compile + spawn | `python agent.py groq --orchestrate --prompt "..."` |
+| Interactive scene building | `python agent.py groq --interactive` |
+| One-shot scene build | `python agent.py groq --prompt "spawn 5 spheres"` |
+| Interactive C++ builder | `python agent.py groq --builder --interactive` |
+| One-shot C++ generation | `python agent.py groq --builder --prompt "Create a HealthComponent"` |
 | Use Gemini instead | Replace `groq` with `gemini` in any command |
 | Use local Ollama | Replace `groq` with `ollama` in any command |
+
+---
+
+## Project Structure
+
+```
+Unreal-MCP/
+├── agent.py            # CLI launcher — pick backend & mode here
+├── server.py           # MCP server entry point (FastMCP / SSE)
+├── requirements.txt    # Python dependencies
+├── .env.example        # Environment variable template
+├── agents/             # LLM backend modules (groq, gemini, ollama)
+├── unreal_mcp/         # Core MCP tools & config
+│   └── config/         # settings.py — UE paths for C++ codegen
+├── generated/          # Output directory for generated .h/.cpp files
+├── recipes/            # Pre-built scene / building JSON recipes
+├── templates/          # C++ class templates
+└── docs/               # Additional documentation
+```
 
 ---
 
 ## Troubleshooting
 
 **`Cannot connect to Unreal Remote Control`**
-Make sure Unreal Editor is running and the Remote Control plugins are enabled. The default port is `30020`.
+Make sure Unreal Editor is running and the Remote Control plugins are enabled. The default WebSocket port is `30020`.
 
-**`Build.bat path error` / preflight check fails** (C++ mode only)
-Set the correct paths in `unreal_mcp/config/settings.py`. Close Unreal Editor before running `--two-phase` or `--orchestrate` — headless compilation requires the editor to be shut down.
+**`GROQ_API_KEY` / `GOOGLE_API_KEY` not found**
+Ensure you copied `.env.example` to `.env` and filled in the correct key for your chosen backend.
+
+**Build path error / preflight check fails** (C++ builder mode only)
+Set the correct paths in `unreal_mcp/config/settings.py`. Close Unreal Editor before running Builder mode with compilation — headless builds require the editor to be shut down.
 
 **`Prompt required` error**
-Add `--prompt "..."` or use `-i` for interactive mode.
+Add `--prompt "..."` or use `--interactive` / `-i` for interactive mode.
 
 **Generated class not showing in editor**
 Confirm the `.h` and `.cpp` files were written under `Source/<YourProjectName>/`, then rebuild from Visual Studio or Unreal Editor.
