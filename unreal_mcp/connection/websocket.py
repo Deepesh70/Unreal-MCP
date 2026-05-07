@@ -5,9 +5,12 @@ This module is the *only* place that opens WebSocket connections to
 Unreal Engine.  Every MCP tool calls `send_ue_ws_command()` instead
 of managing sockets directly.
 
-Phase 2 additions:
-  - execute_python()       — Run Python scripts inside UE's interpreter
+Transport functions:
+  - send_ue_ws_command()   — Call any UFunction on any UObject
+  - send_ue_ws_property()  — Set a property on a UObject
+  - get_ue_ws_property()   — Read a property from a UObject
   - send_console_command() — Execute UE console commands
+  - execute_python()       — Run Python scripts inside UE's interpreter
 """
 
 import json
@@ -125,7 +128,7 @@ async def get_ue_ws_property(
 ) -> dict:
     """
     Read a property from a UObject via Unreal's Remote Control WebSocket.
-    Uses /remote/object/property GET endpoint.
+    Uses /remote/object/property endpoint.
     """
     payload = {
         "MessageName": "http",
@@ -153,15 +156,17 @@ async def send_console_command(command: str) -> dict:
     """
     Execute a console command in Unreal Engine.
 
-    Uses the Remote Control WebSocket to call ExecuteConsoleCommand.
-    This can run any UE console command: stat fps, HighResShot, py, etc.
+    NOTE: Requires "Enable Remote Console Execution" to be ON in
+    Project Settings → Remote Control. If not enabled, this will return
+    an error.
 
     Args:
         command: The console command string to execute.
 
     Returns:
-        The response from Unreal Engine (may be empty for fire-and-forget commands).
+        The response from Unreal Engine.
     """
+    # Try via the HTTP batch endpoint first (more broadly supported)
     payload = {
         "MessageName": "http",
         "Parameters": {
@@ -182,8 +187,21 @@ async def send_console_command(command: str) -> dict:
         async with websockets.connect(UE_WS_URL, ping_timeout=120, close_timeout=120) as ws:
             await ws.send(json.dumps(payload))
             response_str = await ws.recv()
-            return json.loads(response_str)
+            result = json.loads(response_str)
+
+            # Check if console execution is disabled
+            error_msg = result.get("ResponseBody", {}).get("errorMessage", "")
+            if "not enabled" in error_msg.lower():
+                raise Exception(
+                    "Remote console execution is disabled in Unreal Engine.\n"
+                    "To enable: Edit → Project Settings → search 'Remote Control' → "
+                    "Enable 'Allow Remote Console Execution'"
+                )
+
+            return result
     except Exception as e:
+        if "not enabled" in str(e).lower() or "console" in str(e).lower():
+            raise  # Re-raise the informative error
         raise Exception(f"Console command failed: {e}")
 
 
@@ -193,9 +211,9 @@ async def execute_python(script: str, timeout: float = 10.0) -> str:
 
     The script has full access to `import unreal` and all UE Python APIs.
 
-    Implementation: Writes the script to a temp file, wraps it in a try/except
-    that captures stdout + errors to an output file, then executes it via
-    the `py` console command. Polls for the output file to appear.
+    Tries two approaches:
+    1. Write script to temp file + execute via `py` console command
+    2. If console commands are disabled, returns instructions to enable them
 
     Args:
         script: Python source code to execute inside UE.
@@ -240,6 +258,14 @@ async def execute_python(script: str, timeout: float = 10.0) -> str:
     try:
         await send_console_command(f'py "{script_path}"')
     except Exception as e:
+        error_msg = str(e)
+        if "not enabled" in error_msg.lower():
+            return (
+                "ERROR: Remote console execution is disabled in Unreal Engine.\n"
+                "To enable: Edit > Project Settings > search 'Remote Control' > "
+                "Enable 'Allow Remote Console Execution'\n"
+                "After enabling, restart the test."
+            )
         return f"Failed to send script to Unreal: {e}"
 
     # Poll for the output file (script runs async in UE's game thread)
