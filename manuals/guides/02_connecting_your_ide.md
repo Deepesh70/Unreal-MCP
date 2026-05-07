@@ -1,17 +1,53 @@
 # 🔌 Connecting Your IDE — Setup for Every Major IDE
 
-## Prerequisites
+## Quick Start (3 steps)
 
-Before connecting any IDE, you need:
-
-1. **Unreal Engine running** with your project open
-2. **Remote Control Web Interface plugin** enabled in UE (see [Unreal Plugins](03_unreal_plugins.md))
-3. **MCP Server running** — open a terminal and run:
+1. **Install the MCP server** (one time):
    ```bash
    cd d:\Desktop\Unreal-MCP
-   python server.py
+   pip install .
    ```
-   You should see: `Server running on http://localhost:8000`
+   This installs the `unreal-mcp` command globally.
+
+2. **Add MCP config** to your IDE (see sections below)
+
+3. **Open Unreal Engine** with the Remote Control Web Interface plugin enabled
+
+That's it. Your IDE now has full control over Unreal Engine.
+
+---
+
+## Prerequisites
+
+- **Python 3.10+** installed
+- **Unreal Engine running** with your project open
+- **Remote Control Web Interface plugin** enabled in UE (see [Unreal Plugins](03_unreal_plugins.md))
+
+---
+
+## VS Code with GitHub Copilot (MCP-enabled)
+
+The server launches automatically when you open VS Code — no manual terminal needed.
+
+Open VS Code settings (`settings.json`) and add:
+
+```json
+{
+  "mcp.servers": {
+    "unreal-engine": {
+      "command": "unreal-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "UE_WS_URL": "ws://127.0.0.1:30020"
+      }
+    }
+  }
+}
+```
+
+Restart VS Code. Copilot Chat now has access to all Unreal tools.
+
+**Test it:** Type "check my connection to Unreal" → Should show ✅ status for all systems.
 
 ---
 
@@ -23,46 +59,46 @@ Create a file at your project root: `.cursor/mcp.json`
 {
   "mcpServers": {
     "unreal-engine": {
-      "url": "http://localhost:8000/sse"
+      "command": "unreal-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "UE_WS_URL": "ws://127.0.0.1:30020"
+      }
     }
   }
 }
 ```
 
-Restart Cursor. Open the chat sidebar. The AI now has access to all Unreal MCP tools.
+Restart Cursor. The AI now has access to all Unreal MCP tools.
 
-**Test it:** Type "What actors are in my Unreal scene?" → The AI should call `get_scene_state` and return a list.
+**Test it:** Type "What actors are in my Unreal scene?" → The AI should call `get_scene_state` and return a meaningful summary.
 
----
-
-## VS Code with GitHub Copilot (MCP-enabled)
-
-Open VS Code settings (`settings.json`) and add:
-
-```json
-{
-  "mcp.servers": {
-    "unreal-engine": {
-      "type": "sse",
-      "url": "http://localhost:8000/sse"
-    }
-  }
-}
-```
-
-Restart VS Code. Copilot Chat now has access to the tools.
+> **Note:** You can also use SSE mode if you prefer running the server manually:
+> ```json
+> {
+>   "mcpServers": {
+>     "unreal-engine": {
+>       "url": "http://localhost:8000/sse"
+>     }
+>   }
+> }
+> ```
+> Then run `unreal-mcp` in a terminal first.
 
 ---
 
 ## Antigravity
 
-Antigravity supports MCP server connections. Configure it to point to:
+Antigravity supports MCP server connections. You can configure it in two ways:
 
-```
-http://localhost:8000/sse
-```
+**Option A — SSE mode** (requires running the server manually):
+1. Start the server: `unreal-mcp` (in a terminal)
+2. Configure Antigravity to connect to: `http://localhost:8000/sse`
 
-The exact configuration location depends on Antigravity's settings panel. Once connected, the AI in Antigravity can directly call all Unreal tools.
+**Option B — stdio mode** (Antigravity launches the server):
+Configure the command as `unreal-mcp` with args `["--stdio"]`.
+
+The exact configuration location depends on Antigravity's settings panel.
 
 ---
 
@@ -74,30 +110,65 @@ Add to `claude_desktop_config.json` (usually at `%APPDATA%\Claude\`):
 {
   "mcpServers": {
     "unreal-engine": {
-      "command": "python",
-      "args": ["d:\\Desktop\\Unreal-MCP\\server.py"],
-      "env": {}
+      "command": "unreal-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "UE_WS_URL": "ws://127.0.0.1:30020"
+      }
     }
   }
 }
 ```
 
-Note: Claude Desktop launches the server itself. You don't need to run `python server.py` separately.
+Claude Desktop launches the server itself. You don't need to run it separately.
 
 ---
 
 ## Any Other MCP-Compatible IDE
 
-The MCP server uses **SSE (Server-Sent Events)** transport. Any IDE or tool that supports the MCP protocol can connect to:
+**stdio mode** (recommended — IDE auto-launches):
+```json
+{
+  "command": "unreal-mcp",
+  "args": ["--stdio"],
+  "env": {
+    "UE_WS_URL": "ws://127.0.0.1:30020"
+  }
+}
+```
 
-```
-http://localhost:8000/sse
+**SSE mode** (manual — you run the server):
+1. Run `unreal-mcp` (or `unreal-mcp --port 9000` for a custom port)
+2. Connect your IDE to `http://localhost:8000/sse`
+
+---
+
+## Environment Variables
+
+You can customize the connection via the `env` block in your MCP config:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `UE_WS_URL` | `ws://127.0.0.1:30020` | WebSocket URL to Unreal Engine's Remote Control |
+| `SERVER_PORT` | `8000` | Port for SSE mode (auto-fallback if taken) |
+
+For remote Unreal Engine (e.g., on another machine or via ngrok):
+```json
+"env": {
+  "UE_WS_URL": "ws://192.168.1.50:30020"
+}
 ```
 
-If the IDE supports `stdio` transport instead, you can run the server as:
-```bash
-python server.py --transport stdio
-```
+---
+
+## First Things to Try
+
+After connecting, try these prompts in your IDE's AI chat:
+
+1. **"Check my connection to Unreal"** — Verifies the full pipeline (MCP → WebSocket → UE → Python)
+2. **"What's in my scene?"** — Gets a summary of all actors with types and mesh names
+3. **"Spawn a cube at 0, 0, 100"** — Creates a basic shape in the level
+4. **"Take a screenshot"** — Captures the viewport for visual verification
 
 ---
 
@@ -105,7 +176,8 @@ python server.py --transport stdio
 
 | Problem | Solution |
 |---------|----------|
-| "Connection refused" | Is `python server.py` running? Check the terminal. |
-| "No tools found" | Restart the IDE after adding the MCP config. |
-| "Unreal Engine API is offline" | Open Unreal Engine and ensure the Remote Control Web Interface plugin is enabled. |
-| Tools work but nothing happens in Unreal | Check that Unreal's Remote Control is on port 30020 (default). |
+| `unreal-mcp` command not found | Run `pip install .` from the Unreal-MCP directory |
+| "Connection refused" | Is Unreal Engine running? Is the Remote Control Web Interface plugin enabled? |
+| "No tools found" | Restart the IDE after adding the MCP config |
+| Tools work but nothing happens in UE | Check that Unreal's Remote Control is on port 30020 (default) |
+| Port 8000 already in use | Use `unreal-mcp --port 9000` or let it auto-fallback |
