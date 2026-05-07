@@ -18,6 +18,8 @@
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonWriter.h"
+#include "ProceduralDoor.h"
+#include "EngineUtils.h"
 #include "Serialization/JsonSerializer.h"
 
 
@@ -221,7 +223,7 @@ FString AProceduralCityManager::HandleSpawn(TSharedPtr<FJsonObject> Json)
 	}
 
 	// ── Spawn the geometry ──────────────────────────────────────
-	bool bSuccess = SpawnBuildingGeometry(ID, StyleKey, ActualLoc, Params);
+	bool bSuccess = SpawnBuildingGeometry(ID, StyleKey, ActualLoc, Params, Json);
 
 	if (!bSuccess)
 	{
@@ -435,6 +437,15 @@ FString AProceduralCityManager::HandleClearAll()
 	}
 	DynamicMeshPool.Empty();
 
+	// Clear all interactive doors and associated actors
+	for (auto& Pair : Ledger)
+	{
+		for (AActor* Actor : Pair.Value.AssociatedActors)
+		{
+			if (Actor) Actor->Destroy();
+		}
+	}
+
 	Ledger.Empty();
 
 	UE_LOG(LogTemp, Log, TEXT("ProceduralCityManager: ClearAll — removed %d buildings"), Count);
@@ -631,30 +642,116 @@ bool AProceduralCityManager::SpawnBuildingGeometry(
 		double FloorZ = BaseZ + (F * FloorHeight);
 		double WallZ = FloorZ + (FloorHeight / 2.0);
 
+		// Floor Slab with Stairwell Cutout
+		if (F > 0)
 		{
-			FTransform T(FRotator::ZeroRotator, FVector(BaseX, BaseY, FloorZ), FVector(SlabSX, SlabSY, SlabSZ));
-			int32 Idx = FloorHISM->AddInstance(T, true);
-			Building.Instances.Add({FloorHISM, Idx});
+			double StairWidth = 200.0;
+			if (BuildingDepth > StairWidth + 50.0)
+			{
+				double NewSlabSY = (BuildingDepth - StairWidth) / 100.0;
+				double SlabYOffset = StairWidth / 2.0; // Shift slab forward to leave hole at back
+				FTransform TFloor(FRotator::ZeroRotator, FVector(BaseX, BaseY + SlabYOffset, FloorZ), FVector(SlabSX, NewSlabSY, SlabSZ));
+				Building.Instances.Add({FloorHISM, FloorHISM->AddInstance(TFloor, true)});
+			}
+			else
+			{
+				FTransform TFloor(FRotator::ZeroRotator, FVector(BaseX, BaseY, FloorZ), FVector(SlabSX, SlabSY, SlabSZ));
+				Building.Instances.Add({FloorHISM, FloorHISM->AddInstance(TFloor, true)});
+			}
 		}
+		else
+		{
+			FTransform TFloor(FRotator::ZeroRotator, FVector(BaseX, BaseY, FloorZ), FVector(SlabSX, SlabSY, SlabSZ));
+			Building.Instances.Add({FloorHISM, FloorHISM->AddInstance(TFloor, true)});
+		}
+
+		// Front Wall (with Doorway on ground floor)
+		if (F == 0)
+		{
+			double DoorWidth = 200.0;
+			double DoorHeight = 250.0;
+			
+			if (BuildingWidth > DoorWidth + 50.0)
+			{
+				double SideWidth = (BuildingWidth - DoorWidth) / 2.0;
+				double HeaderHeight = FloorHeight - DoorHeight;
+				
+				// Left pillar
+				double LeftCX = BaseX - (BuildingWidth / 2.0) + (SideWidth / 2.0);
+				FTransform TLeft(FRotator::ZeroRotator, FVector(LeftCX, BaseY + HalfD, WallZ), FVector(SideWidth / 100.0, WallFBSY, WallFBSZ));
+				Building.Instances.Add({WallHISM, WallHISM->AddInstance(TLeft, true)});
+				
+				// Right pillar
+				double RightCX = BaseX + (BuildingWidth / 2.0) - (SideWidth / 2.0);
+				FTransform TRight(FRotator::ZeroRotator, FVector(RightCX, BaseY + HalfD, WallZ), FVector(SideWidth / 100.0, WallFBSY, WallFBSZ));
+				Building.Instances.Add({WallHISM, WallHISM->AddInstance(TRight, true)});
+				
+				// Header
+				if (HeaderHeight > 0)
+				{
+					double HeaderZ = FloorZ + DoorHeight + (HeaderHeight / 2.0);
+					FTransform THeader(FRotator::ZeroRotator, FVector(BaseX, BaseY + HalfD, HeaderZ), FVector(DoorWidth / 100.0, WallFBSY, HeaderHeight / 100.0));
+					Building.Instances.Add({WallHISM, WallHISM->AddInstance(THeader, true)});
+				}
+
+				// Spawn Interactive Door
+				FActorSpawnParameters SpawnParams;
+				FVector DoorLoc(BaseX, BaseY + HalfD, FloorZ + (DoorHeight / 2.0));
+				AProceduralDoor* NewDoor = GetWorld()->SpawnActor<AProceduralDoor>(AProceduralDoor::StaticClass(), DoorLoc, FRotator::ZeroRotator, SpawnParams);
+				if (NewDoor)
+				{
+					NewDoor->SetActorScale3D(FVector(DoorWidth / 100.0, WallFBSY, DoorHeight / 100.0));
+					Building.AssociatedActors.Add(NewDoor);
+				}
+			}
+			else
+			{
+				FTransform T(FRotator::ZeroRotator, FVector(BaseX, BaseY + HalfD, WallZ), FVector(WallFBSX, WallFBSY, WallFBSZ));
+				Building.Instances.Add({WallHISM, WallHISM->AddInstance(T, true)});
+			}
+		}
+		else
 		{
 			FTransform T(FRotator::ZeroRotator, FVector(BaseX, BaseY + HalfD, WallZ), FVector(WallFBSX, WallFBSY, WallFBSZ));
-			int32 Idx = WallHISM->AddInstance(T, true);
-			Building.Instances.Add({WallHISM, Idx});
+			Building.Instances.Add({WallHISM, WallHISM->AddInstance(T, true)});
 		}
+
+		// Back Wall
 		{
 			FTransform T(FRotator::ZeroRotator, FVector(BaseX, BaseY - HalfD, WallZ), FVector(WallFBSX, WallFBSY, WallFBSZ));
-			int32 Idx = WallHISM->AddInstance(T, true);
-			Building.Instances.Add({WallHISM, Idx});
+			Building.Instances.Add({WallHISM, WallHISM->AddInstance(T, true)});
 		}
+		// Left Wall
 		{
 			FTransform T(FRotator::ZeroRotator, FVector(BaseX - HalfW, BaseY, WallZ), FVector(WallLRSX, WallLRSY, WallLRSZ));
-			int32 Idx = WallHISM->AddInstance(T, true);
-			Building.Instances.Add({WallHISM, Idx});
+			Building.Instances.Add({WallHISM, WallHISM->AddInstance(T, true)});
 		}
+		// Right Wall
 		{
 			FTransform T(FRotator::ZeroRotator, FVector(BaseX + HalfW, BaseY, WallZ), FVector(WallLRSX, WallLRSY, WallLRSZ));
-			int32 Idx = WallHISM->AddInstance(T, true);
-			Building.Instances.Add({WallHISM, Idx});
+			Building.Instances.Add({WallHISM, WallHISM->AddInstance(T, true)});
+		}
+
+		// Ramp (Stairs) to next floor
+		if (F < NumFloors - 1)
+		{
+			double StairWidth = 200.0;
+			double StairDepth = 400.0; // Extend depth so slope isn't too steep
+			if (BuildingDepth > StairWidth + 50.0 && BuildingWidth > StairDepth + 50.0)
+			{
+				float Pitch = FMath::RadiansToDegrees(FMath::Atan2(FloorHeight, StairDepth));
+				double RampLength = FMath::Sqrt(FloorHeight * FloorHeight + StairDepth * StairDepth);
+				
+				double RampZ = FloorZ + (FloorHeight / 2.0);
+				double RampY = BaseY - HalfD + (StairWidth / 2.0) + WallThickness; // Against back wall
+				double RampX = BaseX - HalfW + (StairDepth / 2.0) + WallThickness; // Left-aligned
+				
+				FVector RampScale(RampLength / 100.0, StairWidth / 100.0, 0.2);
+				FRotator RampRot(Pitch, 0.0, 0.0);
+				
+				FTransform TRamp(RampRot, FVector(RampX, RampY, RampZ), RampScale);
+				Building.Instances.Add({FloorHISM, FloorHISM->AddInstance(TRamp, true)});
+			}
 		}
 	}
 
@@ -799,16 +896,31 @@ bool AProceduralCityManager::SpawnCompositeGeometry(
 
 		FVector WorldPos = Location + Offset;
 
-		auto* HISM = GetOrCreateHISM(Mesh, nullptr);
-		if (!HISM)
-		{
-			continue;
-		}
-
 		FTransform T(FRotator::ZeroRotator, WorldPos, Scale);
-		int32 Idx = HISM->AddInstance(T, true);
-		Building.Instances.Add({HISM, Idx});
-		Spawned++;
+
+		if (Shape.Equals(TEXT("door"), ESearchCase::IgnoreCase))
+		{
+			// Spawn interactive actor instead of HISM
+			FActorSpawnParameters SpawnParams;
+			AProceduralDoor* NewDoor = GetWorld()->SpawnActor<AProceduralDoor>(AProceduralDoor::StaticClass(), WorldPos, FRotator::ZeroRotator, SpawnParams);
+			if (NewDoor)
+			{
+				NewDoor->SetActorScale3D(Scale);
+				Building.AssociatedActors.Add(NewDoor);
+				Spawned++;
+			}
+		}
+		else
+		{
+			auto* HISM = GetOrCreateHISM(Mesh, nullptr);
+			if (!HISM)
+			{
+				continue;
+			}
+			int32 Idx = HISM->AddInstance(T, true);
+			Building.Instances.Add({HISM, Idx});
+			Spawned++;
+		}
 
 		FString Label;
 		if (!(*PartObj)->TryGetStringField(TEXT("Label"), Label))
@@ -914,6 +1026,12 @@ void AProceduralCityManager::DestroyBuilding(const FString& ID)
 			(*MeshComp)->DestroyComponent();
 		}
 		DynamicMeshPool.Remove(ID);
+	}
+
+	// Destroy associated interactive actors
+	for (AActor* Actor : Building->AssociatedActors)
+	{
+		if (Actor) Actor->Destroy();
 	}
 
 	// Remove from Ledger

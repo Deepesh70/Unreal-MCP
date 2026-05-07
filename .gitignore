@@ -49,3 +49,12 @@ graphify-out/
 graphify.md
 
 non_Disclose
+AGENTS.md
+CLAUDE.md
+OPENAI.md
+GROQ.md
+GEMINI.md
+SKILL.md
+
+.gitnexus/
+.claude/

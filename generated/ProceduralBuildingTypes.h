@@ -86,6 +86,9 @@ struct FProceduralBuilding
 
 	UPROPERTY()
 	TArray<FHISMInstanceRef> Instances;
+
+	UPROPERTY()
+	TArray<TObjectPtr<AActor>> AssociatedActors;
 };
 
 

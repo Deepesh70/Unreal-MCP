@@ -184,6 +184,8 @@ def main():
         "ProceduralBuildingTypes.h",
         "ProceduralCityManager.h",
         "ProceduralCityManager.cpp",
+        "ProceduralDoor.h",
+        "ProceduralDoor.cpp",
     ]
 
     os.makedirs(source_dir, exist_ok=True)
