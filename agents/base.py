@@ -250,32 +250,36 @@ def _recipe_to_json(recipe: dict, user_prompt: str) -> str:
 
 
 async def _run_builder(llm, prompt: str):
-    """Call the LLM directly with the builder system prompt, then route JSON to processor."""
+    """Call the LLM directly with the builder system prompt, then route JSON to processor.
+
+    FIXED (Phase 4): No longer bypasses the LLM when a recipe matches.
+    Instead, recipe data is injected INTO the prompt as context, so the LLM
+    can use it intelligently. This fixes the 'bridge paralysis' bug where
+    saying 'build a house next to the bridge' would spawn a bridge instead.
+    """
     print(f"\n🗣️ Prompt: {prompt}\n")
 
-    # Check if we have a recipe — if so, bypass the LLM entirely
+    # Check if we have a matching recipe — inject as context, don't bypass
     recipe = _find_recipe(prompt)
-    if recipe:
-        parts_count = len(recipe.get('parts', recipe.get('decorations', [])))
-        print(f"📐 Recipe matched: '{recipe['name']}' ({parts_count} parts) — bypassing LLM")
-        raw = _recipe_to_json(recipe, prompt)
-        print(f"📦 Recipe JSON:\n{raw}\n")
-        
-        # Force ALL recipes through LEGACY path (individual actors per part)
-        # C++ HISM has issues: wrong floor counts, no per-part colors, single-block visual
-        data = _json.loads(raw)
-        from agents.processor import _handle_spawn_fallback
-        struct_type = data.get("Parameters", {}).get("StructureType", "Composite")
-        floors = data.get("Parameters", {}).get("Floors", "?")
-        print(f"🔧 Direct-spawn: {struct_type} | Floors: {floors}")
-        result = await _handle_spawn_fallback(data)
-        print(f"\n{result}")
-        return
+    enriched_prompt = prompt
 
-    # No recipe — use LLM
+    if recipe:
+        parts = recipe.get('parts', recipe.get('decorations', []))
+        parts_count = len(parts)
+        print(f"📐 Recipe context: '{recipe['name']}' ({parts_count} parts) — injecting as LLM context")
+
+        # Build a compact recipe summary for the LLM
+        recipe_json = _recipe_to_json(recipe, prompt)
+        enriched_prompt = (
+            f"{prompt}\n\n"
+            f"REFERENCE TEMPLATE (use as a starting point, adapt as needed):\n"
+            f"{recipe_json}"
+        )
+
+    # ALWAYS use the LLM — let it reason about what to build
     messages = [
         SystemMessage(content=BUILDER_SYSTEM_PROMPT),
-        HumanMessage(content=prompt),
+        HumanMessage(content=enriched_prompt),
     ]
 
     response = await llm.ainvoke(messages)
