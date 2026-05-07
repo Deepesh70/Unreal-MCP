@@ -100,9 +100,13 @@ async def destroy_actor(actor_path: str) -> str:
     _EDITOR_LIB = "/Script/EditorScriptingUtilities.Default__EditorLevelLibrary"
 
     try:
+        # We must call DestroyActor on the EditorLevelLibrary and pass the actor as a parameter
         await send_ue_ws_command(
-            object_path=actor_path,
+            object_path=_EDITOR_LIB,
             function_name="DestroyActor",
+            parameters={
+                "Actor": actor_path
+            }
         )
 
         short_name = actor_path.split(".")[-1]
@@ -110,3 +114,4 @@ async def destroy_actor(actor_path: str) -> str:
 
     except Exception as e:
         return format_error(e, "Ensure the actor path is correct (use get_scene_state to find it).")
+
