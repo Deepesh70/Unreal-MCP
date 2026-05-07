@@ -31,3 +31,6 @@ from . import properties # noqa: F401  – set_actor_property, get_actor_propert
 from . import capture    # noqa: F401  – capture_viewport
 from . import console    # noqa: F401  – run_console_command
 from . import assets     # noqa: F401  – find_assets
+
+# Phase 4 (reliability + health)
+from . import health     # noqa: F401  – check_connection
