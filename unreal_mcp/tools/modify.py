@@ -90,23 +90,19 @@ async def modify_actor(
 
 @mcp.tool()
 async def destroy_actor(actor_path: str) -> str:
-    """Remove an actor from the scene.
+    """Remove an actor from the scene permanently.
 
     Use get_scene_state first to find the actor's full path.
 
     Args:
         actor_path: Full path to the actor to destroy.
     """
-    _EDITOR_LIB = "/Script/EditorScriptingUtilities.Default__EditorLevelLibrary"
-
     try:
-        # We must call DestroyActor on the EditorLevelLibrary and pass the actor as a parameter
+        # K2_DestroyActor is the actor's own self-destruct method.
+        # It's accessible via Remote Control because it's a UFunction on AActor itself.
         await send_ue_ws_command(
-            object_path=_EDITOR_LIB,
-            function_name="DestroyActor",
-            parameters={
-                "Actor": actor_path
-            }
+            object_path=actor_path,
+            function_name="K2_DestroyActor",
         )
 
         short_name = actor_path.split(".")[-1]
