@@ -34,3 +34,7 @@ from . import assets     # noqa: F401  – find_assets
 
 # Phase 4 (reliability + health)
 from . import health     # noqa: F401  – check_connection
+
+# Phase 5 (materials + import)
+from . import materials     # noqa: F401  – set_material, list_materials
+from . import import_asset  # noqa: F401  – import_asset, add_starter_content
