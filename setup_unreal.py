@@ -15,6 +15,7 @@ import sys
 import re
 import shutil
 import glob
+import importlib.util
 
 # Fix Windows console encoding for emoji/unicode
 if sys.platform == "win32":
@@ -226,18 +227,50 @@ def main():
     else:
         print(f"  ⚠️  No .env file found — create one from .env.example")
 
+    # ── Step 5: Headless Compile & Cleanup ───────────────────────
+    print("\n" + "=" * 60)
+    print("  🚀 Attempting Headless Compilation...")
+    print("=" * 60)
+    
+    # Dynamically import the compile_and_clean script
+    compile_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "compile_and_clean.py")
+    compile_success = False
+    
+    if os.path.exists(compile_script_path):
+        try:
+            spec = importlib.util.spec_from_file_location("compile_and_clean", compile_script_path)
+            compile_and_clean = importlib.util.module_from_spec(spec)
+            sys.modules["compile_and_clean"] = compile_and_clean
+            spec.loader.exec_module(compile_and_clean)
+            
+            compile_success = compile_and_clean.run_headless_compile(uproject_path)
+        except Exception as e:
+            print(f"  ⚠️  Error running headless compiler script: {e}")
+    else:
+        print("  ⚠️  compile_and_clean.py script not found.")
+
     # ── Done ─────────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print("  ✅ SETUP COMPLETE!")
+    if compile_success:
+        print("  ✅ SETUP & BUILD COMPLETE!")
+    else:
+        print("  ⚠️ SETUP COMPLETE, BUT COMPILATION FAILED (or was skipped).")
     print("=" * 60)
-    print(f"""
-  WHAT TO DO NOW:
-  ───────────────
+    
+    if not compile_success:
+        print(f"""
+  MANUAL FALLBACK REQUIRED:
+  ─────────────────────────
   1. Open {project_name}.uproject in Unreal Editor
   2. Let it compile the C++ (or click Build if prompted)
-  3. In Content Browser, search "ProceduralCityManager"
-  4. Drag it into your level → Save the level
-  5. Make sure "Remote Control API" plugin is enabled
+  """)
+        
+    print(f"""
+  WHAT TO DO NEXT:
+  ────────────────
+  1. In Content Browser, search "ProceduralCityManager"
+  2. Drag it into your level → Save the level
+  3. Make sure "Remote Control API" plugin is enabled
      (Edit → Plugins → search "Remote Control")
 
   THEN RUN:

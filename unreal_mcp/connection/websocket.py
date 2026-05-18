@@ -54,6 +54,7 @@ async def send_ue_ws_command(
             "Body": {
                 "objectPath": object_path,
                 "functionName": function_name,
+                "generateTransaction": True,
             },
         },
     }
@@ -109,6 +110,7 @@ async def send_ue_ws_property(
                 "objectPath": object_path,
                 "propertyName": property_name,
                 "propertyValue": property_value,
+                "generateTransaction": True,
             },
         },
     }
@@ -231,15 +233,23 @@ async def execute_python(script: str, timeout: float = 10.0) -> str:
     if os.path.exists(output_path):
         os.remove(output_path)
 
-    # Wrap the user's script to capture output and errors
+    # Wrap the user's script to capture output, errors, and wrap in a transaction
     wrapped_script = (
         'import sys, io, traceback\n'
+        'try:\n'
+        '    import unreal\n'
+        'except ImportError:\n'
+        '    class DummyTransaction:\n'
+        '        def __enter__(self): pass\n'
+        '        def __exit__(self, *args): pass\n'
+        '    unreal = type("unreal", (), {"ScopedEditorTransaction": lambda name: DummyTransaction()})\n'
         f'_ue_mcp_output_path = r"{output_path}"\n'
         '_ue_mcp_stdout = io.StringIO()\n'
         '_ue_mcp_old_stdout = sys.stdout\n'
         'sys.stdout = _ue_mcp_stdout\n'
         'try:\n'
-        f'{textwrap.indent(script, "    ")}\n'
+        '    with unreal.ScopedEditorTransaction("MCP Python Script"):\n'
+        f'{textwrap.indent(script, "        ")}\n'
         '    _result = _ue_mcp_stdout.getvalue()\n'
         '    with open(_ue_mcp_output_path, "w", encoding="utf-8") as _f:\n'
         '        _f.write("SUCCESS\\n" + _result)\n'
