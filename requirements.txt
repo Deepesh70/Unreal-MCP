@@ -19,3 +19,5 @@ httpcore==1.0.7
 # ── Utilities ─────────────────────────────────────────────────────────
 python-dotenv
 legacy-cgi                   # Python 3.13+ compat (httpcore needs cgi module)
+chromadb                     # Vector database for RAG pipeline
+sentence-transformers        # Local text embeddings for RAG

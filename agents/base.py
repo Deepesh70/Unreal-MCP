@@ -249,6 +249,51 @@ def _recipe_to_json(recipe: dict, user_prompt: str) -> str:
     return _json.dumps(result)
 
 
+def _get_rag_context(user_prompt: str) -> str:
+    """Query ChromaDB for relevant assets and build a context string."""
+    try:
+        import chromadb
+        from chromadb.utils import embedding_functions
+        
+        data_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "data", "chroma")
+        if not _os.path.exists(data_dir):
+            return ""
+            
+        # Hide chroma logs
+        import logging
+        logging.getLogger("chromadb").setLevel(logging.ERROR)
+        
+        chroma_client = chromadb.PersistentClient(path=data_dir)
+        sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+        
+        try:
+            collection = chroma_client.get_collection(name="unreal_assets", embedding_function=sentence_transformer_ef)
+        except ValueError:
+            # Collection doesn't exist
+            return ""
+            
+        results = collection.query(
+            query_texts=[user_prompt],
+            n_results=30
+        )
+        
+        if not results['ids'] or not results['ids'][0]:
+            return ""
+            
+        asset_paths = results['ids'][0]
+        context = "\nAVAILABLE ASSETS (You must ONLY use paths from this list. Pick the appropriate pieces to assemble the structure):\n"
+        metadatas = results.get('metadatas', [[{}]])[0]
+        
+        for i, p in enumerate(asset_paths):
+            m_class = metadatas[i].get("asset_class", "Object") if metadatas and len(metadatas) > i and metadatas[i] else "Object"
+            context += f"- {m_class}'{p}'\n"
+            
+        return context
+    except Exception as e:
+        print(f"⚠️  RAG Pipeline warning: {e}")
+        return ""
+
+
 async def _run_builder(llm, prompt: str):
     """Call the LLM directly with the builder system prompt, then route JSON to processor.
 
@@ -275,6 +320,11 @@ async def _run_builder(llm, prompt: str):
             f"REFERENCE TEMPLATE (use as a starting point, adapt as needed):\n"
             f"{recipe_json}"
         )
+
+    rag_context = _get_rag_context(prompt)
+    if rag_context:
+        print(f"🧠 RAG Context: Injected top 30 relevant assets from Vector DB")
+        enriched_prompt += f"\n\n{rag_context}"
 
     # ALWAYS use the LLM — let it reason about what to build
     messages = [
@@ -339,8 +389,14 @@ async def _run_single(agent, prompt: str):
     """Execute a single prompt through the LangChain agent and print the result."""
     print(f"\n🗣️ Prompt: {prompt}\n")
 
+    rag_context = _get_rag_context(prompt)
+    enriched_prompt = prompt
+    if rag_context:
+        print(f"🧠 RAG Context: Injected top 30 relevant assets from Vector DB")
+        enriched_prompt += f"\n\n{rag_context}"
+
     response = await agent.ainvoke({
-        "messages": [HumanMessage(content=prompt)]
+        "messages": [HumanMessage(content=enriched_prompt)]
     })
 
     print("\n✅ Final Response:")

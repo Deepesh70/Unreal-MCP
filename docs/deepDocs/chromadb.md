@@ -1,0 +1,6 @@
+Requirements Updated: Added chromadb and sentence-transformers and ran pip install to get the workspace ready.
+Robust Vector Population: Created scripts/populate_vectordb.py which pushes a Python script over MCP into Unreal Engine. It uses unreal.ARFilter to restrict the search entirely to /Game/ and explicitly to StaticMesh and MaterialInstanceConstant, preventing memory bloat from the engine.
+Semantic Embedding Strings: The extraction script parses the hierarchy of the ObjectPath into a robust semantic string (e.g. StaticMesh Environment Furniture Bedroom WoodItem 04), ensuring vector search works flawlessly even if the meshes are named poorly.
+Idempotent Database Upserts: The integration uses ChromaDB.upsert() keyed by ObjectPath, allowing you to run the script repeatedly without duplicating existing assets in the index.
+Context Expansion (Top 30): In agents/base.py, the RAG pipeline intercepts the user prompt and queries ChromaDB for the top 30 most relevant assets. It injects a highly specific instruction block into the system context so the LLM is constrained to the allowed paths and has enough variety (walls, floors, props) to actually build the requested structures.
+You can run python scripts/populate_vectordb.py at any time to update your ChromaDB index (just ensure Unreal Engine is running with Remote Console Execution enabled).
