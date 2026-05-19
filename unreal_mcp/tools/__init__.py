@@ -16,7 +16,7 @@ To add a new tool:
 
 # Phase 0 (original)
 from . import spawning   # noqa: F401  – spawn_actor
-from . import actors     # noqa: F401  – list_actors
+
 from . import transform  # noqa: F401  – set_actor_scale
 
 # Phase 1 (foundation)
@@ -38,3 +38,6 @@ from . import health     # noqa: F401  – check_connection
 # Phase 5 (materials + import)
 from . import materials     # noqa: F401  – set_material, list_materials
 from . import import_asset  # noqa: F401  – import_asset, add_starter_content
+
+# Phase 5 (The Autonomous MCP Orchestrator)
+from . import orchestrator  # noqa: F401  – query_local_space, search_asset_database, draft_procedural_blueprint, execute_and_compile

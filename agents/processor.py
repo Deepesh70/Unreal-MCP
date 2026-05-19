@@ -708,6 +708,14 @@ def _validate_intent_schema(data: dict) -> tuple:
             if "ToolShape" not in op:
                 return False, f"Operations[{i}] requires a 'ToolShape' field"
 
+    elif intent == "InstancedSpawn":
+        if "ID" not in data or not data["ID"]:
+            return False, "InstancedSpawn requires a non-empty 'ID' field"
+        if "AssetPath" not in data or not data["AssetPath"]:
+            return False, "InstancedSpawn requires a non-empty 'AssetPath' field"
+        if "Transforms" not in data or not isinstance(data["Transforms"], list):
+            return False, "InstancedSpawn requires a 'Transforms' array"
+
     else:
         return False, f"Unknown Intent: '{intent}'"
 
@@ -998,7 +1006,7 @@ async def process_agent_output(raw_content: str, output_dir: str, project_api: s
     if action == "CreateClass":
         return _handle_create_class(data, output_dir, project_api)
 
-    if intent in ("Spawn", "BatchSpawn", "Modify", "Destroy", "ClearAll", "ScanArea", "GenerateGeometry"):
+    if intent in ("Spawn", "BatchSpawn", "Modify", "Destroy", "ClearAll", "ScanArea", "GenerateGeometry", "InstancedSpawn"):
         # Validate the schema before forwarding
         valid, error = _validate_intent_schema(data)
         if not valid:

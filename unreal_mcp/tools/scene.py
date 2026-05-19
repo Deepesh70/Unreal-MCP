@@ -33,6 +33,124 @@ _NOISE_PREFIXES = (
 
 
 @mcp.tool()
+async def get_actors_near_actor(target_actor_id: str, radius: float = 2000.0) -> str:
+    """Find all actors within a certain radius of a specific target actor.
+    
+    This is highly token-efficient. Use this instead of absolute coordinate math
+    to find what is physically near an object you previously placed or discovered.
+    
+    Args:
+        target_actor_id: The partial or full name of the center actor (e.g., "BedFrame_01").
+        radius: The search radius in Unreal Units (cm). Default is 2000.0 (20 meters).
+        
+    Returns:
+        JSON string containing the target's location and a list of nearby actors.
+    """
+    script = f'''
+import unreal
+import json
+
+def get_actors_near():
+    subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    all_actors = subsystem.get_all_level_actors()
+    
+    target_actor = None
+    target_id_lower = "{target_actor_id}".lower()
+    
+    for a in all_actors:
+        if target_id_lower in a.get_name().lower() or target_id_lower in a.get_actor_label().lower():
+            target_actor = a
+            break
+            
+    if not target_actor:
+        return json.dumps({{"error": f"Actor '{target_actor_id}' not found."}})
+        
+    target_loc = target_actor.get_actor_location()
+    
+    nearby = []
+    noise_prefixes = {str(_NOISE_PREFIXES)}
+    
+    for a in all_actors:
+        if a == target_actor: continue
+        
+        # Skip noise actors like HLODs and streaming proxies
+        name_lower = a.get_name().lower()
+        if any(noise in name_lower for noise in noise_prefixes):
+            continue
+            
+        dist = target_loc.distance(a.get_actor_location())
+        if dist <= {radius}:
+            nearby.append({{
+                "name": a.get_name(),
+                "class": a.get_class().get_name(),
+                "distance": round(dist, 1)
+            }})
+            
+    nearby.sort(key=lambda x: x["distance"])
+    
+    return json.dumps({{
+        "target": target_actor.get_name(),
+        "target_location": [round(target_loc.x, 1), round(target_loc.y, 1), round(target_loc.z, 1)],
+        "radius": {radius},
+        "nearby_actors": nearby
+    }}, indent=2)
+
+print(get_actors_near())
+'''
+    try:
+        output = await execute_python(script)
+        return output.strip()
+    except Exception as e:
+        return format_error(e, "Python execution failed for get_actors_near_actor.")
+
+
+@mcp.tool()
+async def get_actors_with_tag(tag_name: str) -> str:
+    """Find all actors that have a specific Gameplay Tag.
+    
+    This is much more efficient than pulling all actors. Useful for finding
+    all 'Interactable', 'Structural', or 'Enemy' actors regardless of class.
+    
+    Args:
+        tag_name: The exact Gameplay Tag string to search for.
+        
+    Returns:
+        JSON string containing all matching actors and their locations.
+    """
+    script = f'''
+import unreal
+import json
+
+def get_actors_with_tag():
+    subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    all_actors = subsystem.get_all_level_actors()
+    
+    matched = []
+    for a in all_actors:
+        if a.actor_has_tag("{tag_name}"):
+            loc = a.get_actor_location()
+            matched.append({{
+                "name": a.get_name(),
+                "class": a.get_class().get_name(),
+                "location": [round(loc.x, 1), round(loc.y, 1), round(loc.z, 1)]
+            }})
+            
+    return json.dumps({{
+        "tag": "{tag_name}",
+        "count": len(matched),
+        "actors": matched
+    }}, indent=2)
+
+print(get_actors_with_tag())
+'''
+    try:
+        output = await execute_python(script)
+        return output.strip()
+    except Exception as e:
+        return format_error(e, "Python execution failed for get_actors_with_tag.")
+
+
+@mcp.tool()
 async def get_scene_state(
     filter_type: str = "",
     detail: str = "full",

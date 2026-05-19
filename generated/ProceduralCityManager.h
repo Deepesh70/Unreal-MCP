@@ -19,14 +19,14 @@
 #include "Components/DynamicMeshComponent.h"
 #include "UDynamicMesh.h"
 
+#include "ProceduralBaseActor.h"
 #include "ProceduralCityManager.generated.h"
 
 class UDataTable;
-class UHierarchicalInstancedStaticMeshComponent;
 class UDynamicMeshComponent;
 
 UCLASS(Blueprintable, Placeable, meta = (DisplayName = "Procedural City Manager"))
-class {{PROJECT_API}} AProceduralCityManager : public AActor
+class {{PROJECT_API}} AProceduralCityManager : public AProceduralBaseActor
 {
 	GENERATED_BODY()
 
@@ -71,10 +71,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "State")
 	TMap<FString, FProceduralBuilding> Ledger;
 
-	// Pool of HISM components — one per unique {Mesh, Material} pair.
-	UPROPERTY()
-	TMap<FHISMPoolKey, TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> HISMPool;
-
 private:
 	// ── Intent Handlers ─────────────────────────────────────────
 	FString HandleSpawn(TSharedPtr<FJsonObject> Json);
@@ -84,6 +80,7 @@ private:
 	FString HandleClearAll();
 	FString HandleScanArea(TSharedPtr<FJsonObject> Json);
 	FString HandleGenerateGeometry(TSharedPtr<FJsonObject> Json);
+	FString HandleInstancedSpawnIntent(TSharedPtr<FJsonObject> Json);
 
 	// ── Core Building Logic ─────────────────────────────────────
 	// Routes by StructureType: Building, Solid, Composite
@@ -108,10 +105,6 @@ private:
 	// swapped element and updates its tracked index.
 	void SwapAndPopReindex(UHierarchicalInstancedStaticMeshComponent* Component,
 		int32 RemovedIndex, int32 OldLastIndex);
-
-	// ── HISM Pool Management ────────────────────────────────────
-	UHierarchicalInstancedStaticMeshComponent* GetOrCreateHISM(
-		UStaticMesh* Mesh, UMaterialInterface* Material = nullptr);
 
 	// ── Geometry Scripting Helpers ───────────────────────────────
 	// Appends a primitive shape onto a UDynamicMesh at the given transform.

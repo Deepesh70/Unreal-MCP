@@ -4,11 +4,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "ProceduralBaseActor.h"
 #include "{{ class_name }}.generated.h"
 
 UCLASS(Blueprintable, Placeable, meta = (DisplayName = "{{ display_name }}"))
-class {{ project_api }} {{ class_name }} : public AActor
+class {{ project_api }} {{ class_name }} : public AProceduralBaseActor
 {
 	GENERATED_BODY()
 

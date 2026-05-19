@@ -110,6 +110,7 @@ FString AProceduralCityManager::ProcessBlueprint(const FString& JsonPayload)
 	if (Intent == TEXT("ClearAll"))           return HandleClearAll();
 	if (Intent == TEXT("ScanArea"))           return HandleScanArea(JsonObj);
 	if (Intent == TEXT("GenerateGeometry"))   return HandleGenerateGeometry(JsonObj);
+	if (Intent == TEXT("InstancedSpawn"))     return HandleInstancedSpawnIntent(JsonObj);
 
 	UE_LOG(LogTemp, Warning, TEXT("ProceduralCityManager: Unknown Intent '%s'"), *Intent);
 	return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), TEXT(""),
@@ -519,6 +520,51 @@ FString AProceduralCityManager::HandleScanArea(TSharedPtr<FJsonObject> Json)
 	return BuildScanReceipt(GroundZ, ExternalCollisions, InternalCollisions);
 }
 
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleInstancedSpawnIntent
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleInstancedSpawnIntent(TSharedPtr<FJsonObject> Json)
+{
+	FString ID;
+	if (!Json->TryGetStringField(TEXT("ID"), ID) || ID.IsEmpty())
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), TEXT(""),
+			FVector::ZeroVector, FVector::ZeroVector, TEXT("Missing ID"));
+	}
+
+	FString AssetPath;
+	if (!Json->TryGetStringField(TEXT("AssetPath"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			FVector::ZeroVector, FVector::ZeroVector, TEXT("Missing AssetPath"));
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* TransformsArray;
+	if (!Json->TryGetArrayField(TEXT("Transforms"), TransformsArray))
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			FVector::ZeroVector, FVector::ZeroVector, TEXT("Missing Transforms array"));
+	}
+
+	FString TransformsJson;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&TransformsJson);
+	FJsonSerializer::Serialize(*TransformsArray, Writer);
+
+	bool bSuccess = HandleInstancedSpawn(AssetPath, TransformsJson);
+
+	if (bSuccess)
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Success"), ID,
+			FVector::ZeroVector, FVector::ZeroVector, TEXT("Bulk spawn complete"));
+	}
+	else
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			FVector::ZeroVector, FVector::ZeroVector, TEXT("HandleInstancedSpawn failed"));
+	}
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  SpawnBuildingGeometry — Routes by StructureType
@@ -950,41 +996,7 @@ void AProceduralCityManager::SwapAndPopReindex(
 //  GetOrCreateHISM — Lazy HISM component pool
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-UHierarchicalInstancedStaticMeshComponent* AProceduralCityManager::GetOrCreateHISM(
-	UStaticMesh* Mesh, UMaterialInterface* Material)
-{
-	if (!Mesh)
-	{
-		return nullptr;
-	}
 
-	FHISMPoolKey Key;
-	Key.Mesh = Mesh;
-	Key.Material = Material;
-
-	// Check if we already have an HISM for this {Mesh, Material} pair
-	if (auto* Found = HISMPool.Find(Key))
-	{
-		return *Found;
-	}
-
-	// Create a new HISM component.
-	// CRITICAL (Bug #2 fix): SetupAttachment BEFORE RegisterComponent.
-	auto* NewHISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
-	NewHISM->SetStaticMesh(Mesh);
-
-	if (Material)
-	{
-		NewHISM->SetMaterial(0, Material);
-	}
-
-	NewHISM->SetMobility(EComponentMobility::Static);
-	NewHISM->SetupAttachment(GetRootComponent());  // BEFORE registration
-	NewHISM->RegisterComponent();                    // AFTER attachment
-
-	HISMPool.Add(Key, NewHISM);
-	return NewHISM;
-}
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

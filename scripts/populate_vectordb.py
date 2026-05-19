@@ -37,7 +37,7 @@ def get_assets():
         results.append({
             "asset_name": str(asset.asset_name),
             "asset_class": str(asset.asset_class_path.asset_name),
-            "object_path": str(asset.object_path)
+            "object_path": f"{asset.package_name}.{asset.asset_name}"
         })
         
     return results
@@ -85,12 +85,12 @@ async def main():
         return
         
     # The output from execute_python starts with "SUCCESS\\n" followed by stdout
-    lines = result.split('\\n', 1)
+    lines = result.split('\n', 1)
     if len(lines) > 1 and lines[0].strip() == "SUCCESS":
         try:
             # Find the line that looks like a JSON array
             json_str = None
-            for line in lines[1].split('\\n'):
+            for line in lines[1].split('\n'):
                 if line.startswith('['):
                     json_str = line
                     break
@@ -101,10 +101,10 @@ async def main():
             assets = json.loads(json_str)
             print(f"✅ Retrieved {len(assets)} assets from Unreal Engine.")
         except Exception as e:
-            print(f"❌ Failed to parse JSON from Unreal: {e}\\nRaw output:\\n{result}")
+            print(f"❌ Failed to parse JSON from Unreal: {e}\nRaw output:\n{result}")
             return
     else:
-        print(f"❌ Unexpected output from Unreal:\\n{result}")
+        print(f"❌ Unexpected output from Unreal:\n{result}")
         return
 
     print("📚 Initializing ChromaDB and sentence-transformers...")
