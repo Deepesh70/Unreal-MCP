@@ -7,30 +7,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "ProceduralBuildingTypes.h"
 #include "ProceduralBaseActor.generated.h"
-
-// Struct for uniquely identifying a HISM pool (Mesh + Material combination)
-USTRUCT(BlueprintType)
-struct FHISMPoolKey
-{
-    GENERATED_BODY()
-
-    UPROPERTY()
-    TObjectPtr<UStaticMesh> Mesh = nullptr;
-
-    UPROPERTY()
-    TObjectPtr<UMaterialInterface> Material = nullptr;
-
-    bool operator==(const FHISMPoolKey& Other) const
-    {
-        return Mesh == Other.Mesh && Material == Other.Material;
-    }
-
-    friend uint32 GetTypeHash(const FHISMPoolKey& Key)
-    {
-        return HashCombine(GetTypeHash(Key.Mesh), GetTypeHash(Key.Material));
-    }
-};
 
 UCLASS()
 class {{PROJECT_API}} AProceduralBaseActor : public AActor
