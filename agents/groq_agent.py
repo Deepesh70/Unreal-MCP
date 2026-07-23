@@ -18,7 +18,7 @@ from agents.base import run_agent
 
 load_dotenv()
 
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 
 def create_llm(model: str = DEFAULT_MODEL):
@@ -26,6 +26,7 @@ def create_llm(model: str = DEFAULT_MODEL):
     return ChatGroq(
         model=model,
         temperature=0,
+        max_tokens=8192,
     )
 
 

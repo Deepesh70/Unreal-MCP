@@ -1,27 +1,18 @@
 """
 Unreal MCP Server — Entry Point.
 
-This file is now a thin launcher.  All logic lives inside the
-`unreal_mcp` package.  Run this to start the FastMCP server:
+This file is a backward-compatible launcher. The real logic is now in
+`unreal_mcp.cli`. Prefer using the `unreal-mcp` command after pip install.
 
-    python server.py
+    python server.py            # SSE mode (default, port 8000)
+    python server.py --stdio    # stdio mode (for VS Code / IDE integration)
+
+Or after `pip install .`:
+    unreal-mcp                  # Same as python server.py
+    unreal-mcp --stdio          # Same as python server.py --stdio
 """
 
-from unreal_mcp import mcp
-from unreal_mcp.config import SERVER_HOST, SERVER_PORT
+from unreal_mcp.cli import main
 
 if __name__ == "__main__":
-    try:
-        # FastMCP v3.x — supports host/port as transport kwargs
-        mcp.run(transport="sse", host=SERVER_HOST, port=SERVER_PORT)
-    except TypeError:
-        try:
-            # FastMCP v2.x — has sse_app() method
-            import uvicorn
-            app = mcp.sse_app()
-            uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)
-        except AttributeError:
-            # FastMCP v1.x / other — run with http transport
-            import uvicorn
-            app = mcp.http_app(transport="sse")
-            uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)
+    main()

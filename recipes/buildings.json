@@ -1,0 +1,282 @@
+{
+  "recipes": [
+    {
+      "name": "hut",
+      "aliases": ["cabin", "shack", "cottage", "small_house", "wooden_house"],
+      "description": "A small single-room dwelling with a pointed roof",
+      "structureType": "Composite",
+      "width": 400,
+      "depth": 400,
+      "parts": [
+        {"name": "foundation", "shape": "cube", "offset": [0,0,5], "scale": [3.5,3.5,0.1], "material": "stone"},
+        {"name": "walls", "shape": "cube", "offset": [0,0,150], "scale": [3.0,3.0,2.8], "material": "wood"},
+        {"name": "roof", "shape": "cone", "offset": [0,0,370], "scale": [4.0,4.0,2.0], "material": "wood"},
+        {"name": "door", "shape": "cube", "offset": [0,152,80], "scale": [0.8,0.08,1.6], "material": "wood"},
+        {"name": "door_frame_left", "shape": "cube", "offset": [-43,153,80], "scale": [0.06,0.1,1.7], "material": "wood"},
+        {"name": "door_frame_right", "shape": "cube", "offset": [43,153,80], "scale": [0.06,0.1,1.7], "material": "wood"},
+        {"name": "door_frame_top", "shape": "cube", "offset": [0,153,165], "scale": [0.92,0.1,0.06], "material": "wood"},
+        {"name": "window_left", "shape": "cube", "offset": [-152,0,170], "scale": [0.06,0.5,0.5], "material": "cyan"},
+        {"name": "window_right", "shape": "cube", "offset": [152,0,170], "scale": [0.06,0.5,0.5], "material": "cyan"},
+        {"name": "window_back", "shape": "cube", "offset": [0,-152,170], "scale": [0.5,0.06,0.5], "material": "cyan"},
+        {"name": "chimney", "shape": "cube", "offset": [-80,80,330], "scale": [0.5,0.5,1.8], "material": "stone"},
+        {"name": "chimney_cap", "shape": "cube", "offset": [-80,80,425], "scale": [0.6,0.6,0.12], "material": "stone"},
+        {"name": "step", "shape": "cube", "offset": [0,175,10], "scale": [1.0,0.4,0.1], "material": "stone"}
+      ]
+    },
+    {
+      "name": "house",
+      "aliases": ["home", "residential", "dwelling", "family_house", "building", "apartment", "story"],
+      "description": "A multi-story residential building with walls, windows, and a pointed roof",
+      "structureType": "Building",
+      "defaultFloors": 2,
+      "width": 800,
+      "depth": 600,
+      "floorHeight": 300,
+      "wallThickness": 20,
+      "roofType": "pointed",
+      "decorations": [
+        {"name": "front_door", "shape": "cube", "offset": [0,300,100], "scale": [1.0,0.15,2.0], "material": "wood"},
+        {"name": "step_1", "shape": "cube", "offset": [0,310,5], "scale": [1.5,0.4,0.1], "material": "stone"},
+        {"name": "window_f1_left", "shape": "cube", "offset": [-200,302,180], "scale": [0.6,0.05,0.6], "material": "cyan"},
+        {"name": "window_f1_right", "shape": "cube", "offset": [200,302,180], "scale": [0.6,0.05,0.6], "material": "cyan"},
+        {"name": "windowsill_left", "shape": "cube", "offset": [-200,305,148], "scale": [0.7,0.1,0.06], "material": "concrete"},
+        {"name": "windowsill_right", "shape": "cube", "offset": [200,305,148], "scale": [0.7,0.1,0.06], "material": "concrete"}
+      ]
+    },
+    {
+      "name": "skyscraper",
+      "aliases": ["high_rise", "office_tower", "tall_building", "office_building"],
+      "description": "A tall multi-floor commercial building with a flat roof",
+      "structureType": "Building",
+      "defaultFloors": 15,
+      "width": 1200,
+      "depth": 1200,
+      "floorHeight": 300,
+      "wallThickness": 30,
+      "roofType": "flat",
+      "decorations": [
+        {"name": "entrance_canopy", "shape": "cube", "offset": [0,620,270], "scale": [4.0,1.0,0.1], "material": "steel"},
+        {"name": "entrance_pillar_l", "shape": "cylinder", "offset": [-180,620,135], "scale": [0.2,0.2,2.5], "material": "steel"},
+        {"name": "entrance_pillar_r", "shape": "cylinder", "offset": [180,620,135], "scale": [0.2,0.2,2.5], "material": "steel"}
+      ]
+    },
+    {
+      "name": "church",
+      "aliases": ["chapel", "temple", "cathedral", "place_of_worship"],
+      "description": "A religious building with a tall steeple",
+      "structureType": "Composite",
+      "width": 600,
+      "depth": 1200,
+      "parts": [
+        {"name": "nave", "shape": "cube", "offset": [0,0,200], "scale": [6,12,4], "material": "concrete"},
+        {"name": "nave_roof", "shape": "cube", "offset": [0,0,405], "scale": [6.5,12.5,0.1], "material": "gray"},
+        {"name": "steeple_base", "shape": "cube", "offset": [0,550,350], "scale": [2.5,2.5,5], "material": "concrete"},
+        {"name": "steeple_top", "shape": "cone", "offset": [0,550,700], "scale": [2.5,2.5,3], "material": "gray"},
+        {"name": "cross_v", "shape": "cube", "offset": [0,550,900], "scale": [0.08,0.08,0.8], "material": "gold"},
+        {"name": "cross_h", "shape": "cube", "offset": [0,550,870], "scale": [0.4,0.08,0.08], "material": "gold"},
+        {"name": "door_left", "shape": "cube", "offset": [-50,602,100], "scale": [0.8,0.08,2.0], "material": "wood"},
+        {"name": "door_right", "shape": "cube", "offset": [50,602,100], "scale": [0.8,0.08,2.0], "material": "wood"},
+        {"name": "window_l1", "shape": "cube", "offset": [-302,200,220], "scale": [0.05,0.8,1.2], "material": "cyan"},
+        {"name": "window_l2", "shape": "cube", "offset": [-302,-200,220], "scale": [0.05,0.8,1.2], "material": "cyan"},
+        {"name": "window_r1", "shape": "cube", "offset": [302,200,220], "scale": [0.05,0.8,1.2], "material": "cyan"},
+        {"name": "window_r2", "shape": "cube", "offset": [302,-200,220], "scale": [0.05,0.8,1.2], "material": "cyan"}
+      ]
+    },
+    {
+      "name": "watchtower",
+      "aliases": ["guard_tower", "lookout_tower", "observation_tower", "tower"],
+      "description": "A tall tower with an observation platform at the top",
+      "structureType": "Composite",
+      "width": 400,
+      "depth": 400,
+      "parts": [
+        {"name": "base", "shape": "cylinder", "offset": [0,0,10], "scale": [2.5,2.5,0.2], "material": "stone"},
+        {"name": "tower_body", "shape": "cylinder", "offset": [0,0,410], "scale": [2.0,2.0,8.0], "material": "stone"},
+        {"name": "mid_ring", "shape": "cylinder", "offset": [0,0,410], "scale": [2.3,2.3,0.12], "material": "stone"},
+        {"name": "platform", "shape": "cube", "offset": [0,0,815], "scale": [3.5,3.5,0.15], "material": "wood"},
+        {"name": "railing_n", "shape": "cube", "offset": [0,165,855], "scale": [3.5,0.06,0.5], "material": "wood"},
+        {"name": "railing_s", "shape": "cube", "offset": [0,-165,855], "scale": [3.5,0.06,0.5], "material": "wood"},
+        {"name": "railing_e", "shape": "cube", "offset": [165,0,855], "scale": [0.06,3.5,0.5], "material": "wood"},
+        {"name": "railing_w", "shape": "cube", "offset": [-165,0,855], "scale": [0.06,3.5,0.5], "material": "wood"},
+        {"name": "roof", "shape": "cone", "offset": [0,0,980], "scale": [3.5,3.5,1.5], "material": "wood"},
+        {"name": "door", "shape": "cube", "offset": [102,0,80], "scale": [0.08,0.7,1.6], "material": "wood"},
+        {"name": "window_1", "shape": "cube", "offset": [0,102,400], "scale": [0.4,0.05,0.4], "material": "cyan"},
+        {"name": "window_2", "shape": "cube", "offset": [0,-102,600], "scale": [0.4,0.05,0.4], "material": "cyan"}
+      ]
+    },
+    {
+      "name": "lighthouse",
+      "aliases": ["beacon", "light_tower"],
+      "description": "A tall coastal lighthouse with a lamp room at the top",
+      "structureType": "Composite",
+      "width": 300,
+      "depth": 300,
+      "parts": [
+        {"name": "base_platform", "shape": "cylinder", "offset": [0,0,5], "scale": [3.5,3.5,0.1], "material": "stone"},
+        {"name": "tower_lower", "shape": "cylinder", "offset": [0,0,260], "scale": [2.5,2.5,5.0], "material": "white"},
+        {"name": "stripe_1", "shape": "cylinder", "offset": [0,0,200], "scale": [2.55,2.55,0.4], "material": "red"},
+        {"name": "tower_upper", "shape": "cylinder", "offset": [0,0,710], "scale": [2.0,2.0,4.0], "material": "white"},
+        {"name": "stripe_2", "shape": "cylinder", "offset": [0,0,660], "scale": [2.05,2.05,0.4], "material": "red"},
+        {"name": "gallery_floor", "shape": "cylinder", "offset": [0,0,915], "scale": [2.8,2.8,0.08], "material": "steel"},
+        {"name": "lamp_room", "shape": "cylinder", "offset": [0,0,990], "scale": [1.8,1.8,1.2], "material": "cyan"},
+        {"name": "lamp_dome", "shape": "sphere", "offset": [0,0,1060], "scale": [1.8,1.8,0.8], "material": "steel"},
+        {"name": "door", "shape": "cube", "offset": [128,0,80], "scale": [0.08,0.8,1.6], "material": "wood"}
+      ]
+    },
+    {
+      "name": "windmill",
+      "aliases": ["mill", "wind_turbine"],
+      "description": "A traditional windmill with blades",
+      "structureType": "Composite",
+      "width": 400,
+      "depth": 400,
+      "parts": [
+        {"name": "base", "shape": "cylinder", "offset": [0,0,5], "scale": [3.0,3.0,0.1], "material": "stone"},
+        {"name": "tower", "shape": "cylinder", "offset": [0,0,360], "scale": [2.0,2.0,7.0], "material": "stone"},
+        {"name": "cap", "shape": "cone", "offset": [0,0,730], "scale": [2.5,2.5,1.2], "material": "wood"},
+        {"name": "hub", "shape": "sphere", "offset": [0,105,620], "scale": [0.5,0.5,0.5], "material": "wood"},
+        {"name": "blade_up", "shape": "cube", "offset": [0,115,870], "scale": [0.15,0.06,5.0], "material": "wood"},
+        {"name": "blade_down", "shape": "cube", "offset": [0,115,370], "scale": [0.15,0.06,5.0], "material": "wood"},
+        {"name": "blade_right", "shape": "cube", "offset": [250,115,620], "scale": [5.0,0.06,0.15], "material": "wood"},
+        {"name": "blade_left", "shape": "cube", "offset": [-250,115,620], "scale": [5.0,0.06,0.15], "material": "wood"},
+        {"name": "door", "shape": "cube", "offset": [102,0,60], "scale": [0.08,0.7,1.2], "material": "wood"},
+        {"name": "window_1", "shape": "cube", "offset": [0,102,350], "scale": [0.4,0.05,0.4], "material": "cyan"}
+      ]
+    },
+    {
+      "name": "castle_tower",
+      "aliases": ["fortress", "keep", "castle", "fortification"],
+      "description": "A medieval castle tower with battlements",
+      "structureType": "Composite",
+      "width": 600,
+      "depth": 600,
+      "parts": [
+        {"name": "base", "shape": "cube", "offset": [0,0,5], "scale": [6.5,6.5,0.1], "material": "stone"},
+        {"name": "tower", "shape": "cube", "offset": [0,0,410], "scale": [6,6,8], "material": "stone"},
+        {"name": "walkway", "shape": "cube", "offset": [0,0,815], "scale": [6.2,6.2,0.1], "material": "stone"},
+        {"name": "battlement_1", "shape": "cube", "offset": [-250,-250,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "battlement_2", "shape": "cube", "offset": [250,-250,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "battlement_3", "shape": "cube", "offset": [-250,250,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "battlement_4", "shape": "cube", "offset": [250,250,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "battlement_5", "shape": "cube", "offset": [0,-250,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "battlement_6", "shape": "cube", "offset": [0,250,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "battlement_7", "shape": "cube", "offset": [-250,0,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "battlement_8", "shape": "cube", "offset": [250,0,870], "scale": [0.8,0.8,0.8], "material": "stone"},
+        {"name": "gate_door", "shape": "cube", "offset": [0,302,100], "scale": [1.8,0.08,2.5], "material": "wood"},
+        {"name": "arrow_slit_1", "shape": "cube", "offset": [302,100,400], "scale": [0.05,0.12,0.6], "material": "black"},
+        {"name": "arrow_slit_2", "shape": "cube", "offset": [302,-100,400], "scale": [0.05,0.12,0.6], "material": "black"},
+        {"name": "flag_pole", "shape": "cylinder", "offset": [0,0,920], "scale": [0.05,0.05,2.0], "material": "steel"},
+        {"name": "flag", "shape": "cube", "offset": [30,0,1000], "scale": [0.8,0.02,0.4], "material": "red"}
+      ]
+    },
+    {
+      "name": "shop",
+      "aliases": ["store", "market", "retail", "boutique"],
+      "description": "A small commercial building with a storefront",
+      "structureType": "Composite",
+      "width": 600,
+      "depth": 500,
+      "parts": [
+        {"name": "building", "shape": "cube", "offset": [0,0,175], "scale": [6,5,3.5], "material": "concrete"},
+        {"name": "storefront", "shape": "cube", "offset": [0,252,130], "scale": [5.0,0.05,2.2], "material": "cyan"},
+        {"name": "door", "shape": "cube", "offset": [0,254,100], "scale": [1.0,0.06,2.0], "material": "steel"},
+        {"name": "awning", "shape": "cube", "offset": [0,310,280], "scale": [5.5,1.2,0.06], "material": "red"},
+        {"name": "sign", "shape": "cube", "offset": [0,260,320], "scale": [4.0,0.06,0.5], "material": "wood"},
+        {"name": "step", "shape": "cube", "offset": [0,280,5], "scale": [5.5,0.6,0.06], "material": "stone"}
+      ]
+    },
+    {
+      "name": "barn",
+      "aliases": ["farm_building", "stable", "farmhouse"],
+      "description": "A large agricultural building",
+      "structureType": "Composite",
+      "width": 800,
+      "depth": 1200,
+      "parts": [
+        {"name": "foundation", "shape": "cube", "offset": [0,0,5], "scale": [8.3,12.3,0.1], "material": "stone"},
+        {"name": "body", "shape": "cube", "offset": [0,0,205], "scale": [8,12,4], "material": "red"},
+        {"name": "roof_ridge", "shape": "cube", "offset": [0,0,460], "scale": [0.3,12.5,0.1], "material": "wood"},
+        {"name": "door_left", "shape": "cube", "offset": [-120,602,130], "scale": [1.2,0.08,2.5], "material": "wood"},
+        {"name": "door_right", "shape": "cube", "offset": [120,602,130], "scale": [1.2,0.08,2.5], "material": "wood"},
+        {"name": "loft_window", "shape": "cube", "offset": [0,602,340], "scale": [0.8,0.05,0.6], "material": "cyan"},
+        {"name": "side_window_1", "shape": "cube", "offset": [402,300,220], "scale": [0.05,0.6,0.5], "material": "cyan"},
+        {"name": "side_window_2", "shape": "cube", "offset": [402,-300,220], "scale": [0.05,0.6,0.5], "material": "cyan"}
+      ]
+    },
+    {
+      "name": "classroom",
+      "aliases": ["class", "school", "lecture_hall", "lab", "computer_lab", "study_room"],
+      "description": "A classroom with desks, computers, whiteboard, and chairs",
+      "structureType": "Composite",
+      "width": 1200,
+      "depth": 800,
+      "parts": [
+        {"name": "floor", "shape": "cube", "offset": [0,0,5], "scale": [12,8,0.1], "material": "gray"},
+        {"name": "wall_back", "shape": "cube", "offset": [0,-400,150], "scale": [12,0.1,3.0], "material": "white"},
+        {"name": "wall_left", "shape": "cube", "offset": [-600,0,150], "scale": [0.1,8,3.0], "material": "white"},
+        {"name": "wall_right", "shape": "cube", "offset": [600,0,150], "scale": [0.1,8,3.0], "material": "white"},
+        {"name": "wall_front", "shape": "cube", "offset": [0,400,150], "scale": [12,0.1,3.0], "material": "white"},
+        {"name": "ceiling", "shape": "cube", "offset": [0,0,305], "scale": [12,8,0.1], "material": "white"},
+        {"name": "whiteboard", "shape": "cube", "offset": [0,-395,180], "scale": [6,0.05,2.0], "material": "white"},
+        {"name": "board_frame", "shape": "cube", "offset": [0,-393,180], "scale": [6.2,0.08,2.1], "material": "black"},
+        {"name": "teacher_desk", "shape": "cube", "offset": [0,-280,40], "scale": [2.5,1.0,0.8], "material": "wood"},
+        {"name": "teacher_chair", "shape": "cube", "offset": [0,-220,30], "scale": [0.5,0.5,0.6], "material": "black"},
+        {"name": "desk_1", "shape": "cube", "offset": [-350,-80,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_1", "shape": "cube", "offset": [-350,-80,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_1", "shape": "cube", "offset": [-350,-20,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_2", "shape": "cube", "offset": [0,-80,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_2", "shape": "cube", "offset": [0,-80,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_2", "shape": "cube", "offset": [0,-20,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_3", "shape": "cube", "offset": [350,-80,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_3", "shape": "cube", "offset": [350,-80,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_3", "shape": "cube", "offset": [350,-20,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_4", "shape": "cube", "offset": [-350,120,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_4", "shape": "cube", "offset": [-350,120,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_4", "shape": "cube", "offset": [-350,180,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_5", "shape": "cube", "offset": [0,120,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_5", "shape": "cube", "offset": [0,120,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_5", "shape": "cube", "offset": [0,180,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "desk_6", "shape": "cube", "offset": [350,120,35], "scale": [1.5,0.8,0.7], "material": "wood"},
+        {"name": "computer_6", "shape": "cube", "offset": [350,120,78], "scale": [0.4,0.3,0.4], "material": "black"},
+        {"name": "chair_6", "shape": "cube", "offset": [350,180,25], "scale": [0.4,0.4,0.5], "material": "blue"},
+        {"name": "door", "shape": "cube", "offset": [595,300,90], "scale": [0.08,1.0,1.8], "material": "wood"},
+        {"name": "window_1", "shape": "cube", "offset": [-595,-150,180], "scale": [0.05,1.5,1.2], "material": "cyan"},
+        {"name": "window_2", "shape": "cube", "offset": [-595,150,180], "scale": [0.05,1.5,1.2], "material": "cyan"}
+      ]
+    },
+    {
+      "name": "garage",
+      "aliases": ["parking", "carport", "car_shelter"],
+      "description": "A simple garage with an open front",
+      "structureType": "Composite",
+      "width": 500,
+      "depth": 600,
+      "parts": [
+        {"name": "floor", "shape": "cube", "offset": [0,0,5], "scale": [5,6,0.1], "material": "concrete"},
+        {"name": "wall_back", "shape": "cube", "offset": [0,-300,150], "scale": [5,0.1,3.0], "material": "concrete"},
+        {"name": "wall_left", "shape": "cube", "offset": [-250,0,150], "scale": [0.1,6,3.0], "material": "concrete"},
+        {"name": "wall_right", "shape": "cube", "offset": [250,0,150], "scale": [0.1,6,3.0], "material": "concrete"},
+        {"name": "roof", "shape": "cube", "offset": [0,0,305], "scale": [5.3,6.3,0.1], "material": "gray"},
+        {"name": "door_track_l", "shape": "cube", "offset": [-200,302,140], "scale": [0.06,0.06,2.8], "material": "steel"},
+        {"name": "door_track_r", "shape": "cube", "offset": [200,302,140], "scale": [0.06,0.06,2.8], "material": "steel"}
+      ]
+    },
+    {
+      "name": "wall",
+      "aliases": ["fence", "barrier", "boundary"],
+      "description": "A simple wall or fence section",
+      "structureType": "Composite",
+      "width": 1000,
+      "depth": 30,
+      "parts": [
+        {"name": "wall_body", "shape": "cube", "offset": [0,0,100], "scale": [10,0.3,2.0], "material": "stone"},
+        {"name": "pillar_left", "shape": "cube", "offset": [-500,0,110], "scale": [0.4,0.4,2.2], "material": "stone"},
+        {"name": "pillar_right", "shape": "cube", "offset": [500,0,110], "scale": [0.4,0.4,2.2], "material": "stone"},
+        {"name": "pillar_mid", "shape": "cube", "offset": [0,0,110], "scale": [0.4,0.4,2.2], "material": "stone"},
+        {"name": "cap_left", "shape": "cube", "offset": [-500,0,225], "scale": [0.5,0.5,0.1], "material": "stone"},
+        {"name": "cap_right", "shape": "cube", "offset": [500,0,225], "scale": [0.5,0.5,0.1], "material": "stone"},
+        {"name": "cap_mid", "shape": "cube", "offset": [0,0,225], "scale": [0.5,0.5,0.1], "material": "stone"}
+      ]
+    }
+  ]
+}
