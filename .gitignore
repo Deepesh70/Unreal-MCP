@@ -53,3 +53,7 @@ AGENTS.md
 CLAUDE.md
 .claude/
 .gitnexus/
+
+*.bin
+*.sqlite3
+*.pickle
