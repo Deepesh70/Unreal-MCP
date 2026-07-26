@@ -90,18 +90,25 @@ def build_nuitka():
 
 
 def sync_to_website():
-    """Copy the generated binary to the Next.js public downloads directory."""
-    exe_src = os.path.join(DIST_DIR, "UnrealMCP_Relay.exe")
+    """Copy the generated binary and create a .zip archive for web & GitHub Releases."""
+    import zipfile
     
+    exe_src = os.path.join(DIST_DIR, "UnrealMCP_Relay.exe")
     if not os.path.exists(exe_src):
-        # Nuitka might place it directly in root
         exe_src = os.path.join(PROJECT_ROOT, "UnrealMCP_Relay.exe")
         
     if os.path.exists(exe_src):
         os.makedirs(WEB_DOWNLOADS_DIR, exist_ok=True)
-        dest = os.path.join(WEB_DOWNLOADS_DIR, "UnrealMCP_Relay.exe")
-        shutil.copy2(exe_src, dest)
-        print(f"📦 Synced executable to Web UI downloads: {dest}")
+        dest_exe = os.path.join(WEB_DOWNLOADS_DIR, "UnrealMCP_Relay.exe")
+        shutil.copy2(exe_src, dest_exe)
+        
+        # Create a .zip version (GitHub supports ZIP files in all upload boxes)
+        zip_path = os.path.join(DIST_DIR, "UnrealMCP_Relay-Windows-x64.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(exe_src, arcname="UnrealMCP_Relay.exe")
+            
+        print(f"📦 Synced executable to Web UI downloads: {dest_exe}")
+        print(f"🤐 Created ZIP package for GitHub Releases: {zip_path}")
     else:
         print("⚠ Executable not found for web sync.")
 
