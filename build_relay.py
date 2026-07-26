@@ -26,6 +26,19 @@ WEB_DOWNLOADS_DIR = os.path.normpath(
 
 def build_pyinstaller():
     """Build standalone executable using PyInstaller."""
+    try:
+        import PyInstaller  # Check availability
+    except ImportError:
+        print("⚠ PyInstaller is not installed in your Python environment.")
+        print("   Installing PyInstaller now...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+
+    # Remove obsolete third-party pathlib package if present (causes PyInstaller conflict in Anaconda)
+    try:
+        subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "pathlib"], capture_output=True)
+    except Exception:
+        pass
+
     print("🚀 Building UnrealMCP_Relay.exe using PyInstaller...")
     
     cmd = [
@@ -48,6 +61,13 @@ def build_pyinstaller():
 
 def build_nuitka():
     """Build C++ compiled machine-code binary using Nuitka."""
+    try:
+        import nuitka  # Check availability
+    except ImportError:
+        print("⚠ Nuitka is not installed in your Python environment.")
+        print("   Installing Nuitka now...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "nuitka"], check=True)
+
     print("🔒 Building secure C++ UnrealMCP_Relay.exe using Nuitka...")
     
     cmd = [
