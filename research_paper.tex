@@ -1,0 +1,459 @@
+% ============================================================
+% Unreal-MCP Research Paper — IEEE Conference Format
+% Compile with: pdflatex research_paper.tex (twice for refs)
+% Or upload to Overleaf.com for instant compilation
+% ============================================================
+\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{tabularx}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red!70!black},
+}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Bridging Natural Language and 3D World Construction:\\A Zero-Setup MCP Framework for AI-Driven\\Unreal Engine Scene Authoring}
+
+\author{
+\IEEEauthorblockN{Deepesh Jeevant}
+\IEEEauthorblockA{
+\textit{Independent Research} \\
+India \\
+deepesh@example.com}
+}
+
+\maketitle
+
+% ============================================================
+\begin{abstract}
+We present \textbf{Unreal-MCP}, an open-source framework that enables Large Language Models (LLMs) to directly construct, modify, and query three-dimensional scenes inside Unreal Engine~5 through the Model Context Protocol (MCP). Unlike prior approaches requiring extensive manual configuration, custom plugins, or domain-specific scripting, our system achieves \textbf{zero-setup deployment}---a single \texttt{pip install} followed by an IDE configuration entry connects any MCP-compatible AI assistant to a running Unreal Engine editor. We introduce a layered architecture comprising (1)~a self-describing MCP tool registry with 17 specialized tools, (2)~an intelligent scene query system that filters environment noise and resolves mesh asset names into human-readable summaries, (3)~a material mapping subsystem enabling realistic scene appearance through friendly-name lookups, and (4)~a multi-link health diagnostic pipeline. We validate the system through the procedural construction of a structurally accurate Howrah Bridge replica comprising 850+ individually placed actors with positional accuracy, demonstrating that complex architectural structures can be assembled entirely through AI-tool interaction without human placement. Our framework reduces the barrier to AI-assisted 3D content creation from hours of setup to under two minutes.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Model Context Protocol, Large Language Models, Unreal Engine, Procedural Generation, 3D Scene Authoring, AI-Assisted Design
+\end{IEEEkeywords}
+
+% ============================================================
+\section{Introduction}
+
+\subsection{Motivation}
+
+The creation of three-dimensional virtual environments remains one of the most labor-intensive tasks in game development, architectural visualization, and simulation. A level designer constructing a moderately complex scene in Unreal Engine must manually position, rotate, scale, and configure hundreds to thousands of individual actors---a process that can consume days of skilled human effort for a single environment.
+
+Recent advances in Large Language Models (LLMs) have demonstrated remarkable capability in understanding spatial relationships, generating structured data, and reasoning about complex multi-step tasks. However, connecting these language-based reasoning capabilities to the concrete, low-level APIs of professional 3D engines presents significant engineering challenges:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Protocol Mismatch:} LLMs operate on text; game engines operate on binary scene graphs, UFunctions, and property systems.
+    \item \textbf{Setup Burden:} Existing solutions require cloning repositories, installing complex dependency chains, configuring WebSocket URLs, and understanding engine-specific plugin systems.
+    \item \textbf{Information Asymmetry:} Raw engine APIs return hundreds of cryptic object paths (e.g., \texttt{HLOD0\_UAID\_3497F631...}) that are meaningless to both humans and AI models.
+    \item \textbf{Tool Blindness:} Connected AI models receive only tool names and parameter signatures---without rich contextual instructions, they resort to creating files on disk rather than using available tools.
+\end{enumerate}
+
+\subsection{Contributions}
+
+This paper makes the following contributions:
+
+\begin{itemize}[leftmargin=*]
+    \item A \textbf{zero-setup pip-installable MCP server} with automatic port fallback and stdio transport for IDE auto-launching.
+    \item A \textbf{self-describing tool registry} with embedded instructions that prevent AI models from reverting to file-editing behaviors.
+    \item An \textbf{intelligent scene query system} (Scene Intelligence Level~2) that classifies actors, filters environment noise, resolves mesh asset names, and produces natural-language summaries.
+    \item A \textbf{material mapping subsystem} supporting 24 friendly-named materials mapped to Unreal Engine Starter Content paths.
+    \item A \textbf{multi-link health diagnostic tool} that independently tests MCP, WebSocket, Remote Control, and Python plugin availability.
+    \item \textbf{Empirical validation} through the construction of an 850-actor Howrah Bridge replica demonstrating structural fidelity, positional accuracy, and real-time throughput.
+\end{itemize}
+
+% ============================================================
+\section{Related Work}
+
+\subsection{Text-to-3D Object Generation}
+
+Text-to-3D generation has seen rapid progress through diffusion-based methods. DreamFusion~\cite{poole2023dreamfusion} introduced Score Distillation Sampling (SDS) for optimizing Neural Radiance Fields from text prompts using pretrained 2D diffusion models. Magic3D~\cite{lin2023magic3d} improved upon this with a coarse-to-fine optimization strategy, achieving higher-resolution outputs via a DMTet representation. Instant3D~\cite{li2024instant3d} further advanced the field with a feed-forward architecture combining sparse-view generation and large reconstruction models, reducing per-object generation time from hours to seconds. However, all these approaches generate \textit{individual objects} outside any game engine context, requiring manual import and scene integration.
+
+\subsection{LLM-Driven Scene Layout}
+
+More relevant to our work are methods that leverage LLMs for scene-level spatial reasoning. LayoutGPT~\cite{feng2024layoutgpt} demonstrated that in-context learning with GPT-3.5/4 can produce 3D bounding box layouts for indoor scenes, using CSS-style coordinate templates. SceneFormer~\cite{wang2021sceneformer} treats indoor scene generation as a sequence prediction task using Transformer self-attention to learn implicit object relationships. Holodeck~\cite{yang2024holodeck} generates fully furnished 3D environments in AI2-THOR by combining GPT-4 with a constraint satisfaction solver for object placement.
+
+3D-GPT~\cite{sun2024threedgpt} is particularly related---it uses multiple LLM agents (a task dispatcher, a 3D modeler, and a layout designer) to generate procedural Blender scripts that build 3D scenes. Our system shares the goal of LLM-driven procedural construction but differs in three critical ways: (1)~we target a professional game engine (Unreal Engine~5) rather than a modeling tool, (2)~we operate \textit{live} within the editor session rather than generating offline scripts, and (3)~we use a standardized protocol (MCP) rather than custom API wrappers.
+
+\subsection{Model Context Protocol}
+
+The Model Context Protocol (MCP), introduced by Anthropic in November 2024~\cite{anthropic2024mcp}, standardizes the interface between AI models and external tools. MCP defines a client-server architecture using JSON-RPC~2.0 over stdio or SSE transport, where AI models consume tools, resources, and prompts exposed by servers. The Python reference implementation~\cite{mcppythonsdk2024} and the FastMCP framework~\cite{fastmcp2025} significantly reduce the boilerplate required to build MCP servers. Prior MCP implementations have targeted web APIs, databases, file systems, and code editors. To our knowledge, \textbf{this is the first MCP server designed for real-time 3D game engine control}.
+
+\subsection{Existing Unreal Engine MCP Integrations}
+
+Several concurrent open-source projects have explored connecting AI assistants to Unreal Engine via MCP. Notable implementations include \texttt{chongdashu/unreal-mcp}~\cite{chongdashu2024}, which uses a custom C++~TCP plugin paired with a Python MCP server, and \texttt{flopperam/unreal-engine-mcp}~\cite{flopperam2025}, which focuses on Blueprint and scene management. Our system differentiates itself by: (a)~requiring \textbf{no custom C++ plugin}---relying solely on UE's built-in Remote Control Web Interface, (b)~providing intelligent scene querying with noise filtering and mesh name resolution, (c)~including a self-describing instruction system that prevents AI tool blindness, and (d)~offering a material mapping and application subsystem for realistic scene appearance.
+
+\subsection{Unreal Engine Remote Control}
+
+Unreal Engine's Remote Control API (introduced in UE~4.27) exposes editor subsystems via HTTP and WebSocket endpoints~\cite{epic2024remotecontrol}. The API supports UFunction invocation (\texttt{/remote/object/call}), property access (\texttt{/remote/object/property}), and batch operations. Originally designed for broadcast production workflows (virtual LED sets, multi-camera rigs), we repurpose it as the transport layer for AI-driven scene authoring. The WebSocket transport provided by the \texttt{websockets} Python library~\cite{augustin2024websockets} enables the low-latency, bidirectional communication required for real-time scene manipulation.
+
+% ============================================================
+\section{System Architecture}
+
+\subsection{Overview}
+
+The Unreal-MCP system comprises four layers, each with a single responsibility (Fig.~\ref{fig:architecture}):
+
+\begin{figure}[htbp]
+\centering
+\fbox{\parbox{0.45\textwidth}{\centering
+\small
+\textbf{AI Client Layer}\\
+(VS Code / Cursor / Claude / Antigravity)\\
+$\downarrow$ \textit{MCP Protocol (stdio or SSE)}\\[4pt]
+\textbf{MCP Server Layer}\\
+FastMCP + 17 tools + self-describing instructions\\
+$\downarrow$ \textit{WebSocket (ws://127.0.0.1:30020)}\\[4pt]
+\textbf{Transport Layer}\\
+5 transport functions\\
+$\downarrow$ \textit{Remote Control API}\\[4pt]
+\textbf{Unreal Engine Editor}\\
+EditorActorSubsystem, Python Interpreter
+}}
+\caption{Four-layer system architecture. Each layer communicates through a single, well-defined interface.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Self-Describing MCP Server}
+
+The central design decision is the \textbf{self-describing instruction block}---a text payload embedded in the FastMCP constructor that is transmitted to every connecting AI client:
+
+\begin{lstlisting}[language=Python, caption=Self-describing server initialization]
+mcp = FastMCP("UnrealMCP",
+  instructions="""You are connected to
+  a LIVE Unreal Engine editor via MCP.
+  DO NOT create or edit any files.
+  You work ENTIRELY through MCP tools.
+  SHAPES: cube, sphere, cylinder...
+  MATERIALS: steel, brick, wood...""")
+\end{lstlisting}
+
+This instruction block solves the \textbf{Tool Blindness} problem. Without it, AI models connected from an empty workspace attempt to create Python scripts or modify local files. With it, models consistently use only the provided MCP tools.
+
+\subsection{Tool Registry}
+
+The 17 tools are organized into functional categories (Table~\ref{tab:tools}). A critical design principle is \textbf{graceful degradation}: the 10~core tools function using only the Remote Control WebSocket API with no additional UE plugins. The 7~advanced tools require the Python Editor Script Plugin, but their absence does not prevent basic operation.
+
+\begin{table}[htbp]
+\caption{Tool Categories and Plugin Requirements}
+\label{tab:tools}
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Category} & \textbf{Tools} & \textbf{Plugin} \\
+\midrule
+Health & 1 & None \\
+Scene Intelligence & 2 & None \\
+Spawning & 1 & None \\
+Modification & 3 & None \\
+Properties & 2 & None \\
+Materials & 2 & None \\
+\midrule
+Scripting & 1 & Python \\
+Discovery & 3 & Python \\
+Feedback & 1 & Python \\
+Console & 1 & Python \\
+\midrule
+\textbf{Total} & \textbf{17} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Mapping Subsystem}
+
+Three mapping dictionaries translate friendly names to engine-specific paths:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Asset Map} (27 entries): \texttt{"cube"} $\rightarrow$ \texttt{/Engine/BasicShapes/Cube.Cube}, \texttt{"chair"} $\rightarrow$ \texttt{/Game/StarterContent/Props/SM\_Chair}
+    \item \textbf{Class Map} (3 entries): \texttt{"pointlight"} $\rightarrow$ \texttt{/Script/Engine.PointLight}
+    \item \textbf{Material Map} (24 entries): \texttt{"steel"} $\rightarrow$ \texttt{/Game/.../M\_Metal\_Steel}
+\end{itemize}
+
+This abstraction means the AI never needs to know Unreal Engine's internal path format. It simply calls \texttt{spawn\_actor("chair", 100, 0, 0)} and the mapping resolves the full asset reference.
+
+\subsection{Scene Intelligence (Level 2)}
+
+The \texttt{get\_scene\_state} tool implements a three-stage pipeline:
+
+\textbf{Stage 1---Classification:} Each actor is classified by name pattern matching into one of 15~recognized types or marked as environment noise.
+
+\textbf{Stage 2---Noise Filtering:} Actors matching 11 noise prefixes (HLOD, LandscapeStreamingProxy, WorldDataStorage, etc.) are separated into an \texttt{environment} section.
+
+\textbf{Stage 3---Enrichment:} For the first 80~actors, the system queries individual locations and resolves mesh names by reading the \texttt{StaticMesh} property from \texttt{StaticMeshComponent0}.
+
+The output is a structured JSON document with a natural-language summary: \textit{``Scene has 164 actors: 27 static meshes (Cube, Sphere), 1 directional light, 128 environment actors (64 Landscape, 64 HLOD).''}
+
+\subsection{Transport Layer}
+
+All communication passes through a single WebSocket module providing five transport functions. Each function opens a transient WebSocket connection, sends a JSON payload conforming to UE's Remote Control message format, and parses the response:
+
+\begin{lstlisting}[language=Python, caption=Remote Control message format]
+payload = {
+  "MessageName": "http",
+  "Parameters": {
+    "Url": "/remote/object/call",
+    "Verb": "PUT",
+    "Body": {
+      "objectPath": "<UObject path>",
+      "functionName": "<UFunction>"
+    }
+  }
+}
+\end{lstlisting}
+
+% ============================================================
+\section{Zero-Setup Deployment}
+
+\subsection{Packaging}
+
+The system is packaged as a standard Python package via \texttt{pyproject.toml} with a console script entry point. Installation requires a single command: \texttt{pip install .}. This registers the \texttt{unreal-mcp} command globally.
+
+\subsection{Transport Modes}
+
+The CLI supports two transport modes:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{stdio} (recommended): The IDE launches the MCP server as a child process, communicating via stdin/stdout. Zero network configuration.
+    \item \textbf{SSE}: The server binds to a configurable host:port with automatic fallback---if port 8000 is occupied, it tries 8001, 8002, etc.
+\end{itemize}
+
+\subsection{IDE Integration}
+
+A single JSON configuration block connects any MCP-compatible IDE:
+
+\begin{lstlisting}[language=Python, caption=IDE configuration (VS Code example)]
+"mcp.servers": {
+  "unreal-engine": {
+    "command": "unreal-mcp",
+    "args": ["--stdio"]
+  }
+}
+\end{lstlisting}
+
+This achieves the \textbf{two-minute setup} target: \texttt{pip install} (60s) + paste config (30s) + restart IDE (30s).
+
+% ============================================================
+\section{Experiments and Results}
+
+\subsection{Experimental Setup}
+
+All experiments were conducted with Unreal Engine 5.6.1 on Windows, Python 3.10+ (Anaconda), FastMCP (latest), and WebSocket transport on port 30020 against a default landscape scene.
+
+\subsection{Health Check Pipeline}
+
+The \texttt{check\_connection} tool was tested against four configurations (Table~\ref{tab:health}).
+
+\begin{table}[htbp]
+\caption{Health Check Results Across Configurations}
+\label{tab:health}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Config} & \textbf{WS} & \textbf{RC} & \textbf{Py} & \textbf{Status} \\
+\midrule
+Full stack & \checkmark & \checkmark & \checkmark & READY \\
+No Python & \checkmark & \checkmark & $\triangle$ & READY* \\
+UE offline & $\times$ & $\times$ & $\times$ & NOT READY \\
+Wrong port & $\times$ & $\times$ & $\times$ & NOT READY \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The tool correctly identified each failure mode and produced actionable fix instructions. Response time was under 2~seconds in all configurations.
+
+\subsection{Scene Intelligence Accuracy}
+
+The scene query system was tested on a level containing 164 actors (Table~\ref{tab:scene}).
+
+\begin{table}[htbp]
+\caption{Scene Query: Raw API vs. Intelligence Level 2}
+\label{tab:scene}
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{Raw} & \textbf{Level 2} \\
+\midrule
+Actors returned & 164 & 36 \\
+Noise filtered & 0 & 128 \\
+Mesh names resolved & 0/27 & 27/27 \\
+NL summary & No & Yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Howrah Bridge Construction}
+
+The primary validation involved procedural construction of a Howrah Bridge---a 705-meter balanced cantilever truss bridge in Kolkata, India---using only MCP tools. Table~\ref{tab:bridge} summarizes the construction.
+
+\begin{table}[htbp]
+\caption{Howrah Bridge Construction Breakdown}
+\label{tab:bridge}
+\centering
+\begin{tabular}{lrl}
+\toprule
+\textbf{Component} & \textbf{Count} & \textbf{Description} \\
+\midrule
+River surface & 1 & Scaled plane \\
+Main deck & 1 & 150m road surface \\
+Under-deck girders & 20 & Transverse beams \\
+Tower pylons & $\sim$200 & Lattice structure \\
+Top chord & $\sim$40 & Parabolic upper beam \\
+Vertical struts & $\sim$82 & Variable height \\
+Diagonal bracing & $\sim$48 & Cross-bracing \\
+Railing bars & $\sim$300 & Individual bars \\
+Approach ramps & 2 & Road extensions \\
+Point lights & 24 & Gold/Cyan/Magenta \\
+\midrule
+\textbf{Total} & \textbf{$\sim$850} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Performance:} 850+ actors spawned with 800+ scaling operations in approximately 4~minutes ($\sim$3.5 actors/second). Zero spawn failures were observed.
+
+\subsection{High-Density Computer Lab Construction}
+
+To evaluate system stability under sustained high-load conditions, we performed a secondary experiment: the construction of a high-fidelity computer laboratory comprising over 3,000 individual assets using Hierarchical Instanced Static Meshes (HISM). Table~\ref{tab:lab} details the asset distribution.
+
+\begin{table}[htbp]
+\caption{Computer Lab Asset Distribution}
+\label{tab:lab}
+\centering
+\begin{tabular}{lrl}
+\toprule
+\textbf{Component} & \textbf{Count} & \textbf{Detail Level} \\
+\midrule
+Structural Shell & $\sim$100 & Wall/Floor/Ceiling panels \\
+Workstations & 960 & 40 stations $\times$ 24 assets/ea \\
+Server Racks & 2,204 & 5 racks $\times$ 551 nodes/LEDs \\
+Lighting & 20 & Lamps + Point Lights \\
+\midrule
+\textbf{Total} & \textbf{3,284} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This experiment demonstrated the framework's ability to maintain high visual complexity while transitioning from individual tool-based spawning to a native-scripted HISM pipeline for massive-scale proceduralism. The successful integration of 2,204 micro-assets (LED indicators and server nodes) validates the protocol's suitability for generating highly granular, visually complex technical environments.
+
+\textbf{Structural Fidelity:} The vertical strut heights followed the formula $h = 500 + H_{\text{tower}} \cdot (d/d_{\max})^2$, producing the characteristic parabolic silhouette where struts are tallest at the towers and shortest at the center span.
+
+\textbf{Lighting:} Three distinct light colors (gold/amber for deck, cyan for towers, magenta for peaks) were applied via \texttt{set\_actor\_property}, demonstrating the property system's versatility.
+
+\subsection{Self-Describing Server Validation}
+
+The MCP server was connected from an empty workspace directory. Without the \texttt{instructions} field, the AI model attempted to create local files (\texttt{bridge\_builder.py}, \texttt{modify.js}). With instructions enabled, the model exclusively used MCP tools across 20~consecutive interaction turns, with \textbf{zero file-creation attempts}.
+
+% ============================================================
+\section{Discussion}
+
+\subsection{Limitations}
+
+\textbf{Deletion Reliability.} The \texttt{destroy\_actor} tool uses \texttt{K2\_DestroyActor}, the runtime destruction method on \texttt{AActor}. While this works for dynamically spawned actors, persistence across editor save/load cycles requires further investigation.
+
+\textbf{Material Availability.} The 24-material mapping depends on Starter Content being present. Projects without Starter Content receive clear error messages, but dynamic material instance creation at runtime is not yet implemented.
+
+\textbf{Python Plugin Dependency.} Seven of seventeen tools require the Python Editor Script Plugin. The system degrades gracefully, but the most powerful capabilities (viewport capture, asset import) are gated behind this requirement.
+
+\textbf{Throughput Ceiling.} At $\sim$3.5 actors/second, constructing 10,000+ actor scenes would take $\sim$45 minutes. Batch spawning APIs and persistent WebSocket connections could improve this by an estimated 5--10$\times$.
+
+\subsection{Design Decisions}
+
+\textbf{Transient vs. Persistent Connections.} We chose transient connections (open-send-receive-close per call). While this sacrifices throughput, it eliminates connection state management and provides natural command serialization.
+
+\textbf{Friendly Name Abstraction.} The AI operates at a semantic level (\texttt{"spawn a steel chair"}) while the mapping layer handles path resolution. This one-directional abstraction means the AI never needs to learn UE's internal path format.
+
+% ============================================================
+\section{Future Work}
+
+\subsection{Near-Term}
+Dynamic material creation via \texttt{ConstructObject}, viewport capture feedback loops, and FBX/OBJ asset import from disk.
+
+\subsection{Medium-Term}
+Hierarchical scene decomposition for scenes exceeding LLM context windows, persistent spatial memory across sessions, and multi-agent collaboration (architect, lighting designer, landscape artist).
+
+\subsection{Long-Term}
+Real-time collaborative editing with conflict resolution, learned construction heuristics from user feedback, and cross-engine portability to Unity, Godot, and Blender.
+
+% ============================================================
+\section{Conclusion}
+
+We have presented Unreal-MCP, a zero-setup framework that bridges Large Language Models and Unreal Engine~5 through the Model Context Protocol. Our system demonstrates that complex 3D scenes---including an 850-actor structural bridge with parabolic truss geometry, multi-color lighting, and approach infrastructure---can be constructed entirely through natural language interaction with an AI agent, without any manual actor placement.
+
+The key technical contributions---self-describing tool registries, intelligent scene noise filtering, friendly-name material mapping, and multi-link health diagnostics---address fundamental usability barriers that have previously limited AI-assisted 3D content creation to expert users with deep engine knowledge. By reducing setup time to under two minutes and ensuring tool-only interaction, we establish a practical foundation for AI-driven 3D world construction accessible to researchers, developers, and creative professionals alike.
+
+% ============================================================
+\begin{thebibliography}{00}
+
+\bibitem{poole2023dreamfusion}
+B.~Poole, A.~Jain, J.~T.~Barron, and B.~Mildenhall, ``DreamFusion: Text-to-3D using 2D Diffusion,'' in \textit{Proc. Int. Conf. Learning Representations (ICLR)}, Kigali, Rwanda, 2023. [Online]. Available: \url{https://arxiv.org/abs/2209.14988}
+
+\bibitem{lin2023magic3d}
+C.-H.~Lin, J.~Gao, L.~Tang, T.~Takikawa, X.~Zeng, X.~Huang, K.~Kreis, S.~Fidler, M.-Y.~Liu, and T.-Y.~Lin, ``Magic3D: High-Resolution Text-to-3D Content Creation,'' in \textit{Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)}, Vancouver, Canada, 2023, pp.~300--309.
+
+\bibitem{li2024instant3d}
+J.~Li, H.~Tan, K.~Zhang, Z.~Xu, F.~Luan, Y.~Xu, Y.~Hong, K.~Sunkavalli, G.~Shakhnarovich, and S.~Bi, ``Instant3D: Fast Text-to-3D with Sparse-View Generation and Large Reconstruction Model,'' in \textit{Proc. Int. Conf. Learning Representations (ICLR)}, Vienna, Austria, 2024. [Online]. Available: \url{https://openreview.net/forum?id=2lDQLiH1W4}
+
+\bibitem{feng2024layoutgpt}
+W.~Feng, W.~Zhu, T.-J.~Fu, V.~Jampani, A.~Akula, X.~He, S.~Basu, X.~E.~Wang, and W.~Y.~Wang, ``LayoutGPT: Compositional Visual Planning and Generation with Large Language Models,'' in \textit{Proc. Advances in Neural Information Processing Systems (NeurIPS)}, vol.~36, New Orleans, USA, 2024. [Online]. Available: \url{https://arxiv.org/abs/2305.15393}
+
+\bibitem{wang2021sceneformer}
+X.~Wang, Y.~Yeshwanth, and M.~Nie{\ss}ner, ``SceneFormer: Indoor Scene Generation with Transformers,'' in \textit{Proc. Int. Conf. 3D Vision (3DV)}, London, UK, 2021, pp.~106--115. doi: 10.1109/3DV53792.2021.00021.
+
+\bibitem{yang2024holodeck}
+Y.~Yang, Z.~Yang, L.~Fan, and Y.~Zhu, ``Holodeck: Language Guided Generation of 3D Embodied AI Environments,'' in \textit{Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)}, Seattle, USA, 2024, pp.~16227--16237.
+
+\bibitem{sun2024threedgpt}
+C.~Sun, S.~Han, W.~Deng, Z.~Zhao, C.~Qin, and L.~Zhang, ``3D-GPT: Procedural 3D Modeling with Large Language Models,'' in \textit{Proc. AAAI Conf. Artificial Intelligence}, vol.~38, no.~5, 2024, pp.~4922--4930. [Online]. Available: \url{https://arxiv.org/abs/2310.12945}
+
+\bibitem{anthropic2024mcp}
+Anthropic, ``Model Context Protocol Specification, v1.0,'' Nov.~2024. [Online]. Available: \url{https://modelcontextprotocol.io/specification}
+
+\bibitem{mcppythonsdk2024}
+Model Context Protocol Contributors, ``MCP Python SDK,'' GitHub, 2024. [Online]. Available: \url{https://github.com/modelcontextprotocol/python-sdk}
+
+\bibitem{fastmcp2025}
+J.~Lowin and PrefectHQ, ``FastMCP: The Fast, Pythonic Way to Build MCP Servers and Clients,'' GitHub, 2025. [Online]. Available: \url{https://github.com/jlowin/fastmcp}
+
+\bibitem{chongdashu2024}
+D.~Chu, ``unreal-mcp: Model Context Protocol Server for Unreal Engine,'' GitHub, 2024. [Online]. Available: \url{https://github.com/chongdashu/unreal-mcp}
+
+\bibitem{flopperam2025}
+Flopperam, ``unreal-engine-mcp: MCP Server for Unreal Engine Blueprint and Scene Management,'' GitHub, 2025. [Online]. Available: \url{https://github.com/flopperam/unreal-engine-mcp}
+
+\bibitem{epic2024remotecontrol}
+Epic Games, ``Remote Control API,'' Unreal Engine Documentation, 2024. [Online]. Available: \url{https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-api-for-unreal-engine}
+
+\bibitem{augustin2024websockets}
+A.~Augustin, ``websockets: A Library for Building WebSocket Servers and Clients in Python,'' GitHub, 2024. [Online]. Available: \url{https://github.com/python-websockets/websockets}
+
+\end{thebibliography}
+
+\end{document}

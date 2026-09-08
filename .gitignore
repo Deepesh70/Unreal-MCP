@@ -12,6 +12,9 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+*.dist/
+*.build/
+*.spec
 eggs/
 *.whl
 pip-log.txt
@@ -43,4 +46,19 @@ ehthumbs.db
 *.log
 logs/
 
-chroma_db/
+data/
+
+graphify-out/
+graphify.md
+
+non_Disclose
+AGENTS.md
+CLAUDE.md
+.claude/
+.gitnexus/
+
+*.bin
+*.sqlite3
+*.pickle
+
+*.exe

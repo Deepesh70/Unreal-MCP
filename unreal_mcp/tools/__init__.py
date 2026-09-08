@@ -13,10 +13,28 @@ To add a new tool:
 
 # Each import causes the @mcp.tool() decorators inside to fire,
 # registering the tools on the shared `mcp` instance.
-from . import spawning       # noqa: F401  – spawn_actor
-from . import actors         # noqa: F401  – list_actors
-from . import transform      # noqa: F401  – set_actor_scale
-from . import mesh_settings  # noqa: F401  – mesh setting tools
-from . import codegen_tool   # noqa: F401  – generate_ue_class, preview_ue_class
-from . import project_tool   # noqa: F401  – get_project_info, list_project_files, list_supported_types
-from . import scene_tool     # noqa: F401  – get_scene_summary
+
+# Phase 0 (original)
+from . import spawning   # noqa: F401  – spawn_actor
+from . import actors     # noqa: F401  – list_actors
+from . import transform  # noqa: F401  – set_actor_scale
+
+# Phase 1 (foundation)
+from . import scene      # noqa: F401  – get_scene_state
+from . import modify     # noqa: F401  – modify_actor, destroy_actor
+
+# Phase 2 (superpower + properties)
+from . import scripting  # noqa: F401  – execute_python_in_editor
+from . import properties # noqa: F401  – set_actor_property, get_actor_property
+
+# Phase 3 (feedback loop + discovery)
+from . import capture    # noqa: F401  – capture_viewport
+from . import console    # noqa: F401  – run_console_command
+from . import assets     # noqa: F401  – find_assets
+
+# Phase 4 (reliability + health)
+from . import health     # noqa: F401  – check_connection
+
+# Phase 5 (materials + import)
+from . import materials     # noqa: F401  – set_material, list_materials
+from . import import_asset  # noqa: F401  – import_asset, add_starter_content

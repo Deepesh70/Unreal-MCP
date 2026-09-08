@@ -26,6 +26,7 @@ def create_llm(model: str = DEFAULT_MODEL):
     return ChatGroq(
         model=model,
         temperature=0,
+        max_tokens=8192,
     )
 
 
