@@ -44,6 +44,11 @@ def print_usage():
 ║    (default)       Standard — MCP tools (spawn, list, scale) ║
 ║    --builder, -b   Builder  — C++ Procedural Architect mode  ║
 ║                                                              ║
+║  MCP Targets:                                                ║
+║    --target native (default) Standalone FastMCP (UE 5.0-5.6) ║
+║    --target epic / --epic    Epic Official MCP (UE 5.8+)     ║
+║    --url <url>               Custom MCP endpoint URL         ║
+║                                                              ║
 ║  Options:                                                    ║
 ║    --test          Quick test (1 API call, lists actors)      ║
 ║    --interactive   Chat mode (type commands one by one)       ║
@@ -51,8 +56,9 @@ def print_usage():
 ║                                                              ║
 ║  Examples:                                                   ║
 ║    python agent.py groq                                      ║
+║    python agent.py groq --epic      ← Target Epic UE 5.8 MCP ║
 ║    python agent.py groq -b -i       ← Builder + Interactive  ║
-║    python agent.py gemini --test                              ║
+║    python agent.py gemini --test                             ║
 ║    python agent.py groq --prompt "spawn a cube at 0 0 200"   ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -60,18 +66,35 @@ def print_usage():
 
 
 def parse_options():
-    """Parse --test, --interactive, --builder, and --prompt flags."""
+    """Parse CLI options including MCP targets."""
     test_mode = "--test" in sys.argv
     interactive = "--interactive" in sys.argv or "-i" in sys.argv
     builder = "--builder" in sys.argv or "-b" in sys.argv
-    prompt = None
+    epic_target = "--epic" in sys.argv
 
+    target = "epic" if epic_target else "native"
+    if "--target" in sys.argv:
+        idx = sys.argv.index("--target")
+        if idx + 1 < len(sys.argv):
+            val = sys.argv[idx + 1].lower()
+            if val in ("epic", "official"):
+                target = "epic"
+            elif val in ("native", "fastmcp"):
+                target = "native"
+
+    mcp_url = None
+    if "--url" in sys.argv:
+        idx = sys.argv.index("--url")
+        if idx + 1 < len(sys.argv):
+            mcp_url = sys.argv[idx + 1]
+
+    prompt = None
     if "--prompt" in sys.argv:
         idx = sys.argv.index("--prompt")
         if idx + 1 < len(sys.argv):
             prompt = sys.argv[idx + 1]
 
-    return test_mode, interactive, builder, prompt
+    return test_mode, interactive, builder, prompt, target, mcp_url
 
 
 async def main():
@@ -80,7 +103,11 @@ async def main():
         sys.exit(1)
 
     backend = sys.argv[1].lower()
-    test_mode, interactive, builder, custom_prompt = parse_options()
+    test_mode, interactive, builder, custom_prompt, target_mcp, mcp_url = parse_options()
+
+    from agents.base import run_agent, TEST_PROMPT
+
+    prompt = TEST_PROMPT if test_mode else custom_prompt
 
     # ── Create LLM ──────────────────────────────────────────────
     if backend == "groq":
@@ -103,7 +130,16 @@ async def main():
         print_usage()
         sys.exit(1)
 
-    await run_agent(llm, model_label=label, prompt=prompt, interactive=interactive, builder=builder)
+    await run_agent(
+        llm,
+        model_label=label,
+        prompt=prompt,
+        interactive=interactive,
+        builder=builder,
+        target_mcp=target_mcp,
+        mcp_url=mcp_url,
+    )
+
 
 
 if __name__ == "__main__":

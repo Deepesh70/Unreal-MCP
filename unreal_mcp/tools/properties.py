@@ -54,6 +54,27 @@ async def set_actor_property(
         except (json.JSONDecodeError, TypeError):
             parsed_value = property_value  # Use as raw string if not valid JSON
 
+        # If setting LightColor on a light, also invoke SetLightColor function
+        # to ensure Unreal Engine recalculates lighting and re-renders the viewport in real-time.
+        if property_name.lower() in ("lightcolor", "color") and isinstance(parsed_value, dict):
+            linear_color = {}
+            for k in ("R", "G", "B", "A"):
+                val = parsed_value.get(k, parsed_value.get(k.lower(), 1.0 if k == "A" else 0.0))
+                if isinstance(val, (int, float)) and val > 1.0:
+                    val = val / 255.0
+                linear_color[k] = float(val)
+
+            try:
+                from unreal_mcp.connection import send_ue_ws_command
+                target_obj = actor_path if ("." in actor_path.split(":")[-1]) else f"{actor_path}.LightComponent0"
+                await send_ue_ws_command(
+                    object_path=target_obj,
+                    function_name="SetLightColor",
+                    parameters={"NewLightColor": linear_color, "bSRGB": True},
+                )
+            except Exception:
+                pass
+
         response = await send_ue_ws_property(
             object_path=actor_path,
             property_name=property_name,

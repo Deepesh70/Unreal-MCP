@@ -20,16 +20,30 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.processor import process_agent_output, reset_manager_cache
-from unreal_mcp.config.settings import CPP_OUTPUT_DIR, PROJECT_API
+from agents.processor import process_agent_output, reset_manager_cache
+from unreal_mcp.config.settings import CPP_OUTPUT_DIR, PROJECT_API, SERVER_PORT, EPIC_MCP_URL
 
 
-# ── MCP Server Configuration ─────────────────────────────────────────
-MCP_SERVER_CONFIG = {
-    "UnrealMCP": {
-        "transport": "sse",
-        "url": "http://localhost:8000/sse",
+def get_mcp_server_config(target: str = "native", custom_url: str = None) -> dict:
+    """Build MCP server configuration for LangChain MultiServerMCPClient."""
+    if target == "epic":
+        return {
+            "EpicUnrealMCP": {
+                "transport": "sse",
+                "url": custom_url or EPIC_MCP_URL,
+            }
+        }
+    return {
+        "UnrealMCP": {
+            "transport": "sse",
+            "url": custom_url or f"http://localhost:{SERVER_PORT}/sse",
+        }
     }
-}
+
+
+# Default configuration for backward compatibility
+MCP_SERVER_CONFIG = get_mcp_server_config("native")
+
 
 # ── Default prompts ───────────────────────────────────────────────────
 DEFAULT_PROMPT = (
@@ -88,7 +102,8 @@ BUILDER_DEFAULT_PROMPT = "Build a 3-story house at the origin with a pointed roo
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async def run_agent(llm, model_label: str, prompt: str = None,
-                    interactive: bool = False, builder: bool = False):
+                    interactive: bool = False, builder: bool = False,
+                    target_mcp: str = "native", mcp_url: str = None):
     """
     Connect to the MCP server, load tools, create a LangChain agent,
     and execute the given prompt.
@@ -99,9 +114,12 @@ async def run_agent(llm, model_label: str, prompt: str = None,
         prompt:       The instruction to send. Falls back to DEFAULT_PROMPT.
         interactive:  If True, enter a loop where the user types commands.
         builder:      If True, use Builder mode (bypasses LangChain, calls LLM directly).
+        target_mcp:   'native' (Unreal-MCP FastMCP server) or 'epic' (official in-editor UE 5.8+ MCP).
+        mcp_url:      Optional override for the MCP server URL.
     """
     mode_label = "Builder 🏗️" if builder else "Standard"
-    print(f"🤖 Booting up {model_label} [{mode_label}] and connecting to Unreal Engine...")
+    target_label = "Epic Official MCP (UE 5.8+)" if target_mcp == "epic" else "Native Unreal-MCP"
+    print(f"🤖 Booting up {model_label} [{mode_label}] targeting [{target_label}]...")
 
     if builder:
         # ── Builder mode: LLM direct call, no LangChain agent ────
@@ -113,9 +131,23 @@ async def run_agent(llm, model_label: str, prompt: str = None,
             await _run_builder(llm, prompt)
     else:
         # ── Standard mode: LangChain tool-calling agent ──────────
-        client = MultiServerMCPClient(MCP_SERVER_CONFIG)
-        tools = await client.get_tools()
-        print(f"🛠️  Loaded {len(tools)} tools from FastMCP.")
+        config = get_mcp_server_config(target=target_mcp, custom_url=mcp_url)
+        target_url = list(config.values())[0]["url"]
+        print(f"🔌 Connecting to MCP endpoint: {target_url}")
+
+        client = MultiServerMCPClient(config)
+        try:
+            tools = await client.get_tools()
+            print(f"🛠️  Loaded {len(tools)} tools from {target_label}.")
+        except Exception as conn_err:
+            print(f"❌ Failed to connect to MCP at {target_url}: {conn_err}")
+            if target_mcp == "epic":
+                print("   Ensure Unreal Engine 5.8+ is running with the 'ModelContextProtocol' plugin enabled.")
+                print("   In UE console, run: ModelContextProtocol.StartServer")
+            else:
+                print(f"   Ensure our FastMCP server is running: python server.py")
+            return
+
         agent = create_agent(llm, tools)
 
         if interactive:
@@ -123,6 +155,7 @@ async def run_agent(llm, model_label: str, prompt: str = None,
         else:
             prompt = prompt or DEFAULT_PROMPT
             await _run_single(agent, prompt)
+
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

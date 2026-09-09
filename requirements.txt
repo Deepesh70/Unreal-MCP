@@ -8,19 +8,16 @@ pydantic
 langchain
 langchain_core
 langchain_mcp_adapters
-langchain_chroma
-langchain_huggingface
-
 
 # ── LLM Providers ────────────────────────────────────────────────────
 langchain_groq               # Groq Cloud (Llama 3.3 70B)
 langchain_ollama             # Local Ollama (70B+ models)
 langchain_google_genai       # Google Gemini (2.5 Pro / Flash)
 
-# ── HTTP (pinned — httpx 0.28+ is incompatible with httpcore 1.0.x) ──
-httpx==0.27.2
-httpcore==1.0.7
-
 # ── Utilities ─────────────────────────────────────────────────────────
 python-dotenv
-legacy-cgi                   # Python 3.13+ compat (httpcore needs cgi module)
+legacy-cgi                   # Python 3.13+ compat
+
+# ── Optional RAG Embeddings (Only needed if using local offline vector store)
+# langchain_chroma
+# langchain_huggingface

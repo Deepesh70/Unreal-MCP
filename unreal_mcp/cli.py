@@ -9,13 +9,33 @@ Usage:
 After `pip install .`, this is available as the `unreal-mcp` command.
 """
 
+import os
 import sys
 import socket
 import argparse
 
+# Clean up broken SSL_CERT_FILE / SSL_CERT_DIR pointing to non-existent files (common on Windows Conda)
+if "SSL_CERT_FILE" in os.environ and not os.path.exists(os.environ["SSL_CERT_FILE"]):
+    del os.environ["SSL_CERT_FILE"]
+if "SSL_CERT_DIR" in os.environ and not os.path.exists(os.environ["SSL_CERT_DIR"]):
+    del os.environ["SSL_CERT_DIR"]
+
 # Ensure UTF-8 output on Windows
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
+
+
+
+def _probe_epic_mcp(host: str = "localhost", port: int = 8000, timeout: float = 0.5) -> bool:
+    """Check if Epic Games official Unreal MCP (UE 5.8+) is running on the port."""
+    try:
+        import urllib.request
+        url = f"http://{host}:{port}/mcp"
+        req = urllib.request.Request(url, headers={"User-Agent": "Unreal-MCP-Probe"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status in (200, 400, 405)
+    except Exception:
+        return False
 
 
 def _find_available_port(start: int = 8000, max_tries: int = 20) -> int:
@@ -29,6 +49,7 @@ def _find_available_port(start: int = 8000, max_tries: int = 20) -> int:
         except OSError:
             continue
     return start  # Fallback to original — let the server error naturally
+
 
 
 def main():
@@ -70,7 +91,11 @@ def main():
         # Try the requested port, auto-fallback if taken
         port = _find_available_port(requested_port)
         if port != requested_port:
-            print(f"⚠  Port {requested_port} is in use, using port {port} instead.")
+            if requested_port == 8000 and _probe_epic_mcp(host, 8000):
+                print(f"🎮 Detected Epic Games official Unreal MCP (UE 5.8+) active on port 8000.")
+                print(f"   Binding Unreal-MCP to port {port} to avoid port collision.")
+            else:
+                print(f"⚠  Port {requested_port} is in use, using port {port} instead.")
 
         print(f"🚀 Unreal MCP Server starting on http://{host}:{port}")
         print(f"   SSE endpoint: http://{host}:{port}/sse")

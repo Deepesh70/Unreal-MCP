@@ -12,7 +12,16 @@ Or after `pip install .`:
     unreal-mcp --stdio          # Same as python server.py --stdio
 """
 
+import os
+
+# Clean up broken SSL_CERT_FILE / SSL_CERT_DIR pointing to non-existent files (common on Windows Conda)
+if "SSL_CERT_FILE" in os.environ and not os.path.exists(os.environ["SSL_CERT_FILE"]):
+    del os.environ["SSL_CERT_FILE"]
+if "SSL_CERT_DIR" in os.environ and not os.path.exists(os.environ["SSL_CERT_DIR"]):
+    del os.environ["SSL_CERT_DIR"]
+
 from unreal_mcp.cli import main
 
 if __name__ == "__main__":
-    main()
+    main()
+
