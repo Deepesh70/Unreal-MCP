@@ -75,6 +75,21 @@ TOOLSET_REGISTRY: Dict[str, Dict[str, Any]] = {
             "list_supported_types": "List supported variable types mapped to Unreal C++ types.",
         }
     },
+    "AnimationTools": {
+        "description": "IK Rig Presets and automated batch animation retargeting via Unreal IK Retargeter subsystem.",
+        "tools": {
+            "list_ik_rig_presets": "List standard bone hierarchies, chain names, and default poses for common rigs.",
+            "retarget_animations": "Batch retarget animation sequences using IK Retargeter without editor UI interaction.",
+        }
+    },
+    "CombatTools": {
+        "description": "Equip weapons to character sockets and configure shooter combat mechanics (RMB Aim, LMB Fire).",
+        "tools": {
+            "setup_character_socket": "Create or update a weapon socket on a skeletal mesh skeleton.",
+            "attach_weapon_to_character": "Attach a weapon static or skeletal mesh to a character level actor or blueprint.",
+            "setup_combat_mechanics": "Configure shooter mechanics including aiming camera zoom and hitscan line tracing.",
+        }
+    },
 }
 
 
