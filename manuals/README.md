@@ -1,5 +1,8 @@
 # Unreal-MCP — Project Manual
 
+> [!TIP]
+> **Unified Documentation**: All manuals, guides, and architecture references have been consolidated into the centralized [docs/](../docs/README.md) hierarchy. Refer to [docs/README.md](../docs/README.md) for the latest indexed documentation.
+
 > **What is this?** A complete documentation module for the Unreal-MCP AI Engine. Everything about how the project works, how it evolved, what mistakes were made, and how to use it — written so anyone can understand.
 
 ---

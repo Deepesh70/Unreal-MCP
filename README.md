@@ -57,6 +57,48 @@
 
 ---
 
+## 📁 Repository Structure
+
+The codebase is organized according to production open-source software engineering standards:
+
+```text
+Unreal-MCP/
+├── unreal_mcp/                 # 📦 Canonical Python Package
+│   ├── core/                   # Engine config, logging, and connection protocols
+│   ├── server/                 # FastMCP server runtime & transport layer
+│   ├── api/                    # FastAPI WebSocket server & IDE bridge
+│   ├── agents/                 # Multi-agent generative system (Builder, Vision, RAG)
+│   ├── tools/                  # 32+ registered Unreal MCP tools
+│   ├── codegen/                # C++ class generator & Jinja2 templates
+│   └── cli.py                  # Unified CLI: serve, agent, api, bridge
+│
+├── docs/                       # 📚 Diátaxis Documentation Hierarchy
+│   ├── getting_started/        # Installation, UE plugin setup, IDE configuration
+│   ├── architecture/           # System overview, WebSocket bridge, SaaS relay
+│   ├── guides/                 # Combat, retargeting, codegen, web UI integration
+│   ├── reference/              # Complete tool dictionary and asset schemas
+│   ├── research/               # Academic papers & LaTeX sources
+│   └── interview/              # Technical masterclass & system design defenses
+│
+├── examples/                   # 💡 Cookbooks, Demos & Blueprints
+│   ├── demos/                  # Standalone runnable scene authoring demos
+│   ├── recipes/                # Animation, combat, and building automation recipes
+│   └── blueprints/             # Reference architectural blueprint markdown files
+│
+├── scripts/                    # 🛠️ Automation & Packaging Scripts
+│   ├── setup_unreal.py         # In-engine setup helper
+│   ├── setup_materials.py      # Starter material library generator
+│   └── build_relay.py          # Standalone relay packaging script
+│
+├── generated/                  # ⚙️ Generated C++ Procedural City engine
+├── tests/                      # 🧪 Test Suite (Imports, CLI, Tools, Codegen)
+└── pyproject.toml              # 📄 Modern Python build configuration & dependencies
+```
+
+> 📖 **Full Documentation**: Explore the indexed guides and technical deep-dives in **[docs/README.md](docs/README.md)**.
+
+---
+
 ## 🚀 Full Setup Guide
 
 Follow these step-by-step instructions to run Unreal-MCP on any windows.(heven't tested on any other OS)
@@ -290,8 +332,8 @@ Add Unreal-MCP to your IDE configuration file so your AI assistant can drive Unr
 ## 🔬 Academic Research & Validation
 
 The framework and its procedural delegator architecture are formally documented in our research paper:  
-📖 **[Bridging Natural Language and 3D World Construction: A Zero-Setup MCP Framework for AI-Driven Unreal Engine Scene Authoring](research_paper.md)**  
-*(LaTeX source available in [research_paper.tex](research_paper.tex))*
+📖 **[Bridging Natural Language and 3D World Construction: A Zero-Setup MCP Framework for AI-Driven Unreal Engine Scene Authoring](docs/research/research_paper.md)**  
+*(LaTeX source available in [docs/research/research_paper.tex](docs/research/research_paper.tex))*
 
 Includes an empirical validation study constructing an 850+ actor structurally accurate Howrah Bridge replica completely through AI-tool interaction.
 

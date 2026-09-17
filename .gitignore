@@ -14,7 +14,6 @@ dist/
 build/
 *.dist/
 *.build/
-*.spec
 eggs/
 *.whl
 pip-log.txt
@@ -35,6 +34,13 @@ ENV/
 .project
 .settings/
 .classpath
+.claude/
+.gitnexus/
+CLAUDE.md
+AGENTS.md
+graphify-out/
+graphify.md
+non_Disclose
 
 # ── OS Generated ─────────────────────────────────────────────────────
 .DS_Store
@@ -42,34 +48,21 @@ Thumbs.db
 Desktop.ini
 ehthumbs.db
 
-# ── Logs ──────────────────────────────────────────────────────────────
+# ── Runtime Logs & DB ────────────────────────────────────────────────
 *.log
 logs/
-
-data/
-
-graphify-out/
-graphify.md
-
-non_Disclose
-AGENTS.md
-CLAUDE.md
-.claude/
-.gitnexus/
-
 *.bin
 *.sqlite3
 *.pickle
-
 *.exe
-# Local MCP Server Configs (Personal IDE Paths)
+
+# Preserve demo/sample data, ignore local runtime databases
+data/chroma_db/
+
+# ── Local MCP Server Configs (Personal IDE Paths) ────────────────────
 .mcp.json
 !.mcp.json.example
 .agents/
 !.agents/
 .agents/*
 !.agents/mcp_config.json.example
-.gitnexus
-AGENTS.md
-CLAUDE.md
-.claude/

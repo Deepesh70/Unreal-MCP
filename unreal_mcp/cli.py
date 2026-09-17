@@ -53,10 +53,35 @@ def _find_available_port(start: int = 8000, max_tries: int = 20) -> int:
 
 
 def main():
-    """Entry point for the `unreal-mcp` CLI command."""
+    """Entry point for the `unreal-mcp` CLI command with subcommand routing."""
+    if len(sys.argv) > 1:
+        subcmd = sys.argv[1].lower()
+        if subcmd == "agent":
+            import asyncio
+            from unreal_mcp.agent import main as agent_main
+            # Pass remaining arguments
+            sys.argv = [sys.argv[0]] + sys.argv[2:]
+            asyncio.run(agent_main())
+            return
+        elif subcmd == "api":
+            import uvicorn
+            from unreal_mcp.config import SERVER_HOST, SERVER_PORT
+            port = int(os.getenv("API_PORT", 8000))
+            uvicorn.run("unreal_mcp.api.server:app", host=SERVER_HOST, port=port, reload=True)
+            return
+        elif subcmd == "bridge":
+            import asyncio
+            from unreal_mcp.api.bridge import main as bridge_main
+            sys.argv = [sys.argv[0]] + sys.argv[2:]
+            asyncio.run(bridge_main())
+            return
+        elif subcmd == "serve":
+            # Strip 'serve' keyword and continue into server parser
+            sys.argv = [sys.argv[0]] + sys.argv[2:]
+
     parser = argparse.ArgumentParser(
         prog="unreal-mcp",
-        description="MCP server for Unreal Engine — AI-powered level editing",
+        description="Unreal Engine MCP Platform — Server, Multi-Agent Builder, API & IDE Bridge",
     )
     parser.add_argument(
         "--stdio",

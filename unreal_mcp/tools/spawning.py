@@ -165,6 +165,46 @@ async def spawn_actors_batch(
     return f"Batch spawned {len(results)} actors:\n" + "\n".join(f"  • {r}" for r in results)
 
 
+async def spawn_actor_internal(
+    actor_class_or_asset: str,
+    x: float = 0,
+    y: float = 0,
+    z: float = 0,
+    rotation_pitch: float = 0,
+    rotation_yaw: float = 0,
+    rotation_roll: float = 0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+    scale_z: float = 1.0,
+) -> tuple[str, str]:
+    """Internal spawn helper that returns (actor_path, display_name)."""
+    asset_path = get_asset_path(actor_class_or_asset)
+    if asset_path:
+        response = await send_ue_ws_command(
+            object_path=_EDITOR_LIB,
+            function_name="SpawnActorFromObject",
+            parameters={
+                "ObjectToUse": asset_path,
+                "Location": {"X": x, "Y": y, "Z": z},
+            },
+        )
+        display_name = actor_class_or_asset
+    else:
+        resolved_class = get_class_path(actor_class_or_asset)
+        response = await send_ue_ws_command(
+            object_path=_EDITOR_LIB,
+            function_name="SpawnActorFromClass",
+            parameters={
+                "ActorClass": resolved_class,
+                "Location": {"X": x, "Y": y, "Z": z},
+            },
+        )
+        display_name = actor_class_or_asset
+
+    actor_path = _extract_actor_path(response)
+    return actor_path, display_name
+
+
 def _extract_actor_path(response: dict) -> str:
     """Try to extract the spawned actor's path from UE's response."""
     if not response:
