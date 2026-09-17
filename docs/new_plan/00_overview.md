@@ -126,4 +126,6 @@ python agent.py groq -b -i
 🏗️ Builder > Build a 3-story house at the origin
 ```
 
+> **Alternative (Web UI):** You can also run the Web UI backend using `uvicorn api_server:app --port 8000` to connect a Next.js frontend dashboard! See [11_web_ui.md](./11_web_ui.md).
+
 > **Prerequisites:** Unreal Engine must be running with the **Remote Control API** plugin enabled, and the `AProceduralCityManager` actor must be placed in your level.

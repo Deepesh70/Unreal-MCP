@@ -4,3 +4,6 @@ from .websocket import send_ue_ws_property  # noqa: F401
 from .websocket import get_ue_ws_property  # noqa: F401
 from .websocket import send_console_command  # noqa: F401
 from .websocket import execute_python  # noqa: F401
+from .websocket import send_ue_ws_property_read  # noqa: F401
+from .websocket import send_ue_ws_property_update  # noqa: F401
+from .websocket import send_ue_ws_object_describe  # noqa: F401

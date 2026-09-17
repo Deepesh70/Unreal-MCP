@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "unreal-mcp": {
+      "command": "C:\\Users\\aadit\\.conda\\envs\\unreaMCP\\python.exe",
+      "args": [
+        "c:/Users/aadit/Desktop/Unreal-MCP/server.py",
+        "--stdio"
+      ],
+      "env": {
+        "UE_WS_URL": "ws://127.0.0.1:30020"
+      }
+    }
+  }
+}

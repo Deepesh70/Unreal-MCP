@@ -38,3 +38,17 @@ from . import health     # noqa: F401  – check_connection
 # Phase 5 (materials + import)
 from . import materials     # noqa: F401  – set_material, list_materials
 from . import import_asset  # noqa: F401  – import_asset, add_starter_content
+
+# Phase 6 (discovery + codegen + scene tools)
+from . import discovery     # noqa: F401  – list_toolsets, describe_toolset
+from . import codegen_tool  # noqa: F401  – generate_ue_class, preview_ue_class
+from . import project_tool  # noqa: F401  – get_project_info, list_project_files, list_supported_types
+from . import scene_tool    # noqa: F401  – get_scene_summary
+from . import mesh_settings # noqa: F401  – mesh settings helpers
+
+# Phase 7 (animation & IK retargeting)
+from . import retargeting   # noqa: F401  – list_ik_rig_presets, retarget_animations
+
+# Phase 8 (character equipment & combat mechanics)
+from . import character_weapon  # noqa: F401  – setup_character_socket, attach_weapon_to_character, setup_combat_mechanics
+

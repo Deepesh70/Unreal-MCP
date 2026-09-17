@@ -206,6 +206,19 @@ def main():
             f.write(content)
         print(f"  ✅ {filename} → {dst}")
 
+    # ── Step 2.5: Copy Toolset Registry Python (UE 5.8+) ─────────
+    toolset_src = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "unreal_mcp", "toolsets", "procedural_toolset.py"
+    )
+    if os.path.exists(toolset_src):
+        python_toolsets_dir = os.path.join(project_dir, "Content", "Python", "toolset_registry", "toolsets")
+        os.makedirs(python_toolsets_dir, exist_ok=True)
+        toolset_dst = os.path.join(python_toolsets_dir, "procedural_toolset.py")
+        shutil.copy2(toolset_src, toolset_dst)
+        print(f"  ✅ procedural_toolset.py → {toolset_dst} (Epic UE 5.8 Toolset Registry)")
+
+
     # ── Step 3: Patch Build.cs ───────────────────────────────────
     print("\n🔧 Patching Build.cs...")
     build_cs = get_build_cs_path(uproject_path)

@@ -62,3 +62,14 @@ CLAUDE.md
 *.pickle
 
 *.exe
+# Local MCP Server Configs (Personal IDE Paths)
+.mcp.json
+!.mcp.json.example
+.agents/
+!.agents/
+.agents/*
+!.agents/mcp_config.json.example
+.gitnexus
+AGENTS.md
+CLAUDE.md
+.claude/

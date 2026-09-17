@@ -109,7 +109,16 @@ FString AProceduralCityManager::ProcessBlueprint(const FString& JsonPayload)
 	if (Intent == TEXT("Destroy"))            return HandleDestroy(JsonObj);
 	if (Intent == TEXT("ClearAll"))           return HandleClearAll();
 	if (Intent == TEXT("ScanArea"))           return HandleScanArea(JsonObj);
+#if defined(WITH_GEOMETRY_SCRIPTING) && WITH_GEOMETRY_SCRIPTING
 	if (Intent == TEXT("GenerateGeometry"))   return HandleGenerateGeometry(JsonObj);
+#endif
+	// New intents (Features 1-5)
+	if (Intent == TEXT("QueryBuilding"))      return HandleQueryBuilding(JsonObj);
+	if (Intent == TEXT("Flatten"))            return HandleFlatten(JsonObj);
+	if (Intent == TEXT("Sculpt"))             return HandleSculpt(JsonObj);
+	if (Intent == TEXT("Connect"))            return HandleConnect(JsonObj);
+	if (Intent == TEXT("SpawnBlueprint"))     return HandleSpawnBlueprint(JsonObj);
+	if (Intent == TEXT("Screenshot"))         return HandleScreenshot(JsonObj);
 
 	UE_LOG(LogTemp, Warning, TEXT("ProceduralCityManager: Unknown Intent '%s'"), *Intent);
 	return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), TEXT(""),
@@ -426,6 +435,7 @@ FString AProceduralCityManager::HandleClearAll()
 	}
 
 	// Clear all DynamicMesh components (GenerateGeometry)
+#if defined(WITH_GEOMETRY_SCRIPTING) && WITH_GEOMETRY_SCRIPTING
 	for (auto& Pair : DynamicMeshPool)
 	{
 		if (Pair.Value)
@@ -434,6 +444,20 @@ FString AProceduralCityManager::HandleClearAll()
 		}
 	}
 	DynamicMeshPool.Empty();
+#endif
+
+	// Clear connections (Feature 4: Roads)
+	ConnectionLedger.Empty();
+
+	// Clear Blueprint actors (Feature 5)
+	for (auto& Pair : BlueprintActorPool)
+	{
+		if (Pair.Value)
+		{
+			Pair.Value->Destroy();
+		}
+	}
+	BlueprintActorPool.Empty();
 
 	Ledger.Empty();
 
@@ -688,6 +712,9 @@ bool AProceduralCityManager::SpawnBuildingGeometry(
 	UE_LOG(LogTemp, Log, TEXT("[CityManager] '%s' Building: %d floors, %d HISM instances"),
 		*ID, NumFloors, Building.Instances.Num());
 
+	// Track bounding box for relational queries
+	Building.Extents = FVector(HalfW, HalfD, (NumFloors * FloorHeight) / 2.0);
+
 	Ledger.Add(ID, MoveTemp(Building));
 	return true;
 }
@@ -737,6 +764,9 @@ bool AProceduralCityManager::SpawnSolidGeometry(
 	Building.StyleKey = TEXT("Solid");
 	Building.Location = Location;
 	Building.Instances.Add({HISM, Idx});
+
+	// Track bounding box for relational queries
+	Building.Extents = FVector(Width / 2.0, Depth / 2.0, Height / 2.0);
 
 	Ledger.Add(ID, MoveTemp(Building));
 
@@ -907,6 +937,7 @@ void AProceduralCityManager::DestroyBuilding(const FString& ID)
 	}
 
 	// Remove from DynamicMesh pool if it's a GenerateGeometry object
+#if defined(WITH_GEOMETRY_SCRIPTING) && WITH_GEOMETRY_SCRIPTING
 	if (auto* MeshComp = DynamicMeshPool.Find(ID))
 	{
 		if (*MeshComp)
@@ -915,6 +946,7 @@ void AProceduralCityManager::DestroyBuilding(const FString& ID)
 		}
 		DynamicMeshPool.Remove(ID);
 	}
+#endif
 
 	// Remove from Ledger
 	Ledger.Remove(ID);
@@ -1251,6 +1283,7 @@ FString AProceduralCityManager::BuildScanReceipt(
 //  HandleGenerateGeometry — Runtime boolean modeling via Geometry Scripting
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+#if defined(WITH_GEOMETRY_SCRIPTING) && WITH_GEOMETRY_SCRIPTING
 FString AProceduralCityManager::HandleGenerateGeometry(TSharedPtr<FJsonObject> Json)
 {
 	// ── Parse ID ──────────────────────────────────────────────────
@@ -1514,6 +1547,7 @@ void AProceduralCityManager::ApplyMaterialByColor(
 
 	UE_LOG(LogTemp, Log, TEXT("[CityManager] Applied color '%s'"), *ColorName);
 }
+#endif // WITH_GEOMETRY_SCRIPTING
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1552,4 +1586,435 @@ TArray<TSharedPtr<FJsonValue>> AProceduralCityManager::VectorToJsonArray(FVector
 	Arr.Add(MakeShared<FJsonValueNumber>(Vec.Y));
 	Arr.Add(MakeShared<FJsonValueNumber>(Vec.Z));
 	return Arr;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  ComputeBuildingExtents — Calculate AABB from HISM instances
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FVector AProceduralCityManager::ComputeBuildingExtents(const FProceduralBuilding& Building)
+{
+	if (!Building.Extents.IsNearlyZero())
+	{
+		return Building.Extents;
+	}
+
+	// Fallback: compute from HISM instance transforms
+	FVector Min(FLT_MAX, FLT_MAX, FLT_MAX);
+	FVector Max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+	for (const FHISMInstanceRef& Ref : Building.Instances)
+	{
+		if (!Ref.Component || Ref.InstanceIndex < 0) continue;
+
+		FTransform T;
+		if (Ref.Component->GetInstanceTransform(Ref.InstanceIndex, T, true))
+		{
+			FVector Pos = T.GetLocation();
+			FVector Scale = T.GetScale3D() * 50.0; // Default cube = 100 UU, half = 50
+			Min = Min.ComponentMin(Pos - Scale);
+			Max = Max.ComponentMax(Pos + Scale);
+		}
+	}
+
+	if (Min.X > Max.X) return FVector(500, 500, 300); // Fallback
+	return (Max - Min) / 2.0;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleQueryBuilding — Feature 1: Return info about a building
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleQueryBuilding(TSharedPtr<FJsonObject> Json)
+{
+	FString TargetID;
+	if (!Json->TryGetStringField(TEXT("TargetID"), TargetID))
+	{
+		return BuildReceipt(TEXT("QueryResult"), TEXT("Failed"), TEXT(""),
+			FVector::ZeroVector, FVector::ZeroVector,
+			TEXT("QueryBuilding requires a 'TargetID' field"));
+	}
+
+	FProceduralBuilding* Building = Ledger.Find(TargetID);
+	if (!Building)
+	{
+		return BuildReceipt(TEXT("QueryResult"), TEXT("Failed"), TargetID,
+			FVector::ZeroVector, FVector::ZeroVector,
+			FString::Printf(TEXT("ID '%s' not found in Ledger"), *TargetID));
+	}
+
+	FVector Extents = ComputeBuildingExtents(*Building);
+
+	TSharedPtr<FJsonObject> Receipt = MakeShared<FJsonObject>();
+	Receipt->SetStringField(TEXT("Action"), TEXT("QueryResult"));
+	Receipt->SetStringField(TEXT("Status"), TEXT("Found"));
+	Receipt->SetStringField(TEXT("ID"), TargetID);
+	Receipt->SetStringField(TEXT("StyleKey"), Building->StyleKey);
+	Receipt->SetArrayField(TEXT("Location"), VectorToJsonArray(Building->Location));
+	Receipt->SetArrayField(TEXT("Extents"), VectorToJsonArray(Extents));
+	Receipt->SetNumberField(TEXT("InstanceCount"), Building->Instances.Num());
+
+	FString Output;
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output);
+	FJsonSerializer::Serialize(Receipt.ToSharedRef(), Writer);
+	return Output;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleFlatten — Feature 2: Create a flat platform at a location
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleFlatten(TSharedPtr<FJsonObject> Json)
+{
+	// Parse Center
+	FVector Center = FVector::ZeroVector;
+	const TArray<TSharedPtr<FJsonValue>>* CenterArr;
+	if (Json->TryGetArrayField(TEXT("Center"), CenterArr) && CenterArr->Num() >= 3)
+	{
+		Center = JsonArrayToVector(*CenterArr);
+	}
+
+	double Radius = 2000.0;
+	Json->TryGetNumberField(TEXT("Radius"), Radius);
+
+	double TargetZ = 0.0;
+	Json->TryGetNumberField(TEXT("TargetZ"), TargetZ);
+
+	FString ID = TEXT("Platform_Flatten");
+	Json->TryGetStringField(TEXT("ID"), ID);
+
+	// Get ground Z if TargetZ not specified
+	if (!Json->HasField(TEXT("TargetZ")))
+	{
+		TargetZ = GetGroundZ(Center);
+	}
+
+	// Create a large flat HISM cube as a platform
+	auto* HISM = GetOrCreateHISM(DefaultCubeMesh, nullptr);
+	if (!HISM) return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+		Center, Center, TEXT("Failed to create HISM for platform"));
+
+	double PlatformSX = Radius / 50.0;  // Radius in each direction
+	double PlatformSY = Radius / 50.0;
+	double PlatformSZ = 0.1;  // Very thin
+
+	FTransform T(FRotator::ZeroRotator,
+		FVector(Center.X, Center.Y, TargetZ - 5.0),  // Slightly below target Z
+		FVector(PlatformSX, PlatformSY, PlatformSZ));
+	int32 Idx = HISM->AddInstance(T, true);
+
+	// Register in Ledger
+	FProceduralBuilding Building;
+	Building.BuildingID = ID;
+	Building.StyleKey = TEXT("Platform");
+	Building.Location = FVector(Center.X, Center.Y, TargetZ);
+	Building.Extents = FVector(Radius, Radius, 5.0);
+	Building.Instances.Add({HISM, Idx});
+	Ledger.Add(ID, MoveTemp(Building));
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] Flatten: Created platform '%s' at (%.0f,%.0f,%.0f) r=%.0f"),
+		*ID, Center.X, Center.Y, TargetZ, Radius);
+
+	return BuildReceipt(TEXT("BuildResult"), TEXT("Success"), ID,
+		Center, FVector(Center.X, Center.Y, TargetZ));
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleSculpt — Feature 2: Raise/lower platform
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleSculpt(TSharedPtr<FJsonObject> Json)
+{
+	FVector Center = FVector::ZeroVector;
+	const TArray<TSharedPtr<FJsonValue>>* CenterArr;
+	if (Json->TryGetArrayField(TEXT("Center"), CenterArr) && CenterArr->Num() >= 3)
+	{
+		Center = JsonArrayToVector(*CenterArr);
+	}
+
+	double Radius = 1000.0;
+	Json->TryGetNumberField(TEXT("Radius"), Radius);
+
+	double DeltaZ = 500.0;
+	Json->TryGetNumberField(TEXT("DeltaZ"), DeltaZ);
+
+	FString ID = TEXT("Platform_Sculpt");
+	Json->TryGetStringField(TEXT("ID"), ID);
+
+	double BaseZ = GetGroundZ(Center);
+
+	auto* HISM = GetOrCreateHISM(DefaultCubeMesh, nullptr);
+	if (!HISM) return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+		Center, Center, TEXT("Failed to create HISM for sculpted platform"));
+
+	// Create a raised/lowered platform
+	double PlatformHeight = FMath::Abs(DeltaZ);
+	double PlatformZ = (DeltaZ > 0)
+		? BaseZ + PlatformHeight / 2.0
+		: BaseZ - PlatformHeight / 2.0;
+
+	FTransform T(FRotator::ZeroRotator,
+		FVector(Center.X, Center.Y, PlatformZ),
+		FVector(Radius / 50.0, Radius / 50.0, PlatformHeight / 100.0));
+	int32 Idx = HISM->AddInstance(T, true);
+
+	FProceduralBuilding Building;
+	Building.BuildingID = ID;
+	Building.StyleKey = TEXT("SculptedPlatform");
+	Building.Location = FVector(Center.X, Center.Y, BaseZ + DeltaZ);
+	Building.Extents = FVector(Radius, Radius, PlatformHeight / 2.0);
+	Building.Instances.Add({HISM, Idx});
+	Ledger.Add(ID, MoveTemp(Building));
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] Sculpt: Created raised platform '%s' deltaZ=%.0f"),
+		*ID, DeltaZ);
+
+	return BuildReceipt(TEXT("BuildResult"), TEXT("Success"), ID,
+		Center, FVector(Center.X, Center.Y, BaseZ + DeltaZ));
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleConnect — Feature 4: Build road segments between waypoints
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleConnect(TSharedPtr<FJsonObject> Json)
+{
+	FString ID;
+	if (!Json->TryGetStringField(TEXT("ID"), ID) || ID.IsEmpty())
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), TEXT(""),
+			FVector::ZeroVector, FVector::ZeroVector,
+			TEXT("Connect requires a non-empty 'ID' field"));
+	}
+
+	// Parse Nodes array
+	const TArray<TSharedPtr<FJsonValue>>* NodesArr;
+	if (!Json->TryGetArrayField(TEXT("Nodes"), NodesArr) || NodesArr->Num() < 2)
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			FVector::ZeroVector, FVector::ZeroVector,
+			TEXT("Connect requires a 'Nodes' array with at least 2 waypoints"));
+	}
+
+	TArray<FVector> Nodes;
+	for (const auto& NodeVal : *NodesArr)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* PtArr;
+		if (NodeVal->TryGetArray(PtArr) && PtArr->Num() >= 3)
+		{
+			Nodes.Add(JsonArrayToVector(*PtArr));
+		}
+	}
+
+	if (Nodes.Num() < 2)
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			FVector::ZeroVector, FVector::ZeroVector,
+			TEXT("Could not parse at least 2 valid waypoints"));
+	}
+
+	double Width = 300.0;
+	Json->TryGetNumberField(TEXT("Width"), Width);
+
+	// Get or create HISM for road segments (flat cubes)
+	auto* RoadHISM = GetOrCreateHISM(DefaultCubeMesh, nullptr);
+	if (!RoadHISM)
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			Nodes[0], Nodes[0], TEXT("Failed to create road HISM"));
+	}
+
+	FProceduralConnection Conn;
+	Conn.ConnectionID = ID;
+	Conn.Nodes = Nodes;
+	Conn.Width = Width;
+
+	// Also register as a building in the Ledger for Destroy/ClearAll
+	FProceduralBuilding RoadBuilding;
+	RoadBuilding.BuildingID = ID;
+	RoadBuilding.StyleKey = TEXT("Road");
+	RoadBuilding.Location = Nodes[0];
+
+	// Build road segments between consecutive nodes
+	int32 Spawned = 0;
+	for (int32 i = 0; i < Nodes.Num() - 1; ++i)
+	{
+		FVector Start = Nodes[i];
+		FVector End = Nodes[i + 1];
+
+		// Snap to ground at each point
+		Start.Z = GetGroundZ(Start) + 1.0;  // Slightly above ground
+		End.Z = GetGroundZ(End) + 1.0;
+
+		FVector Midpoint = (Start + End) / 2.0;
+		FVector Direction = End - Start;
+		float SegLength = Direction.Size();
+		Direction.Normalize();
+
+		// Rotation to align the cube along the direction
+		FRotator Rot = Direction.Rotation();
+
+		// Scale: length along X, width along Y, very thin Z
+		FVector Scale(SegLength / 100.0, Width / 100.0, 0.1);
+
+		FTransform T(Rot, Midpoint, Scale);
+		int32 Idx = RoadHISM->AddInstance(T, true);
+		Conn.SegmentInstances.Add({RoadHISM, Idx});
+		RoadBuilding.Instances.Add({RoadHISM, Idx});
+		Spawned++;
+	}
+
+	RoadBuilding.Extents = FVector(Width / 2.0, Width / 2.0, 5.0);
+	Ledger.Add(ID, MoveTemp(RoadBuilding));
+	ConnectionLedger.Add(ID, MoveTemp(Conn));
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] Connect '%s': %d segments, %d nodes, %.0f wide"),
+		*ID, Spawned, Nodes.Num(), Width);
+
+	return BuildReceipt(TEXT("BuildResult"), TEXT("Success"), ID, Nodes[0], Nodes[0]);
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleSpawnBlueprint — Feature 5: Spawn an actual Blueprint actor
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleSpawnBlueprint(TSharedPtr<FJsonObject> Json)
+{
+	FString ID;
+	if (!Json->TryGetStringField(TEXT("ID"), ID) || ID.IsEmpty())
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), TEXT(""),
+			FVector::ZeroVector, FVector::ZeroVector,
+			TEXT("SpawnBlueprint requires a non-empty 'ID' field"));
+	}
+
+	// Parse location
+	FVector RequestedLoc = FVector::ZeroVector;
+	const TArray<TSharedPtr<FJsonValue>>* LocArr;
+	if (Json->TryGetArrayField(TEXT("RequestedLoc"), LocArr) && LocArr->Num() >= 3)
+	{
+		RequestedLoc = JsonArrayToVector(*LocArr);
+	}
+
+	// Parse BlueprintKey — try DataTable lookup first
+	FString BlueprintKey;
+	if (!Json->TryGetStringField(TEXT("BlueprintKey"), BlueprintKey))
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			RequestedLoc, RequestedLoc,
+			TEXT("SpawnBlueprint requires a 'BlueprintKey' field"));
+	}
+
+	// Try to resolve from BlueprintDictionary DataTable
+	UClass* ActorClass = nullptr;
+	if (BlueprintDictionary)
+	{
+		FBlueprintDictionaryRow* Row = BlueprintDictionary->FindRow<FBlueprintDictionaryRow>(
+			FName(*BlueprintKey), TEXT("HandleSpawnBlueprint"));
+		if (Row && !Row->ActorClass.IsNull())
+		{
+			ActorClass = Row->ActorClass.LoadSynchronous();
+		}
+	}
+
+	// Try direct asset path as fallback
+	if (!ActorClass)
+	{
+		FString AssetPath;
+		if (Json->TryGetStringField(TEXT("AssetPath"), AssetPath))
+		{
+			ActorClass = LoadClass<AActor>(nullptr, *AssetPath);
+		}
+	}
+
+	if (!ActorClass)
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			RequestedLoc, RequestedLoc,
+			FString::Printf(TEXT("Could not resolve BlueprintKey '%s' to an actor class"), *BlueprintKey));
+	}
+
+	// Spawn the actor
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Name = FName(*ID);
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ActorClass, RequestedLoc, FRotator::ZeroRotator, SpawnParams);
+	if (!SpawnedActor)
+	{
+		return BuildReceipt(TEXT("BuildResult"), TEXT("Failed"), ID,
+			RequestedLoc, RequestedLoc, TEXT("SpawnActor returned null"));
+	}
+
+	// Set properties from JSON if provided
+	const TSharedPtr<FJsonObject>* PropsPtr;
+	if (Json->TryGetObjectField(TEXT("Properties"), PropsPtr))
+	{
+		for (const auto& PropPair : (*PropsPtr)->Values)
+		{
+			FProperty* Prop = SpawnedActor->GetClass()->FindPropertyByName(FName(*PropPair.Key));
+			if (Prop)
+			{
+				FString ValueStr;
+				if (PropPair.Value->TryGetString(ValueStr))
+				{
+					void* PropAddr = Prop->ContainerPtrToValuePtr<void>(SpawnedActor);
+					Prop->ImportText_Direct(*ValueStr, PropAddr, SpawnedActor, 0);
+				}
+			}
+		}
+	}
+
+	// Register in pools for lifecycle management
+	BlueprintActorPool.Add(ID, SpawnedActor);
+
+	FProceduralBuilding Building;
+	Building.BuildingID = ID;
+	Building.StyleKey = FString::Printf(TEXT("BP_%s"), *BlueprintKey);
+	Building.Location = RequestedLoc;
+	Building.Extents = FVector(100, 100, 100);  // Default extents for BP actors
+	Ledger.Add(ID, MoveTemp(Building));
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] SpawnBlueprint '%s': %s at (%.0f,%.0f,%.0f)"),
+		*ID, *BlueprintKey, RequestedLoc.X, RequestedLoc.Y, RequestedLoc.Z);
+
+	return BuildReceipt(TEXT("BuildResult"), TEXT("Success"), ID, RequestedLoc, RequestedLoc);
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  HandleScreenshot — Feature 3: Capture viewport image
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FString AProceduralCityManager::HandleScreenshot(TSharedPtr<FJsonObject> Json)
+{
+	FString Filename = TEXT("MCP_Screenshot");
+	Json->TryGetStringField(TEXT("Filename"), Filename);
+
+	// Use UE's built-in screenshot system
+	FString ScreenshotDir = FPaths::ScreenShotDir();
+	FString FullPath = FPaths::Combine(ScreenshotDir, Filename + TEXT(".png"));
+
+	// Request a screenshot via the viewport
+	FScreenshotRequest::RequestScreenshot(FullPath, false, false);
+
+	UE_LOG(LogTemp, Log, TEXT("[CityManager] Screenshot requested: %s"), *FullPath);
+
+	TSharedPtr<FJsonObject> Receipt = MakeShared<FJsonObject>();
+	Receipt->SetStringField(TEXT("Action"), TEXT("ScreenshotResult"));
+	Receipt->SetStringField(TEXT("Status"), TEXT("Requested"));
+	Receipt->SetStringField(TEXT("FilePath"), FullPath);
+
+	FString Output;
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output);
+	FJsonSerializer::Serialize(Receipt.ToSharedRef(), Writer);
+	return Output;
 }

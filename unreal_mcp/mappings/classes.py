@@ -10,9 +10,11 @@ imports from this single source of truth.
 # Key   : lowercase friendly name
 # Value : /Script/Engine class path used by SpawnActorFromClass
 CLASS_MAP: dict[str, str] = {
-    "pointlight":       "/Script/Engine.PointLight",
-    "spotlight":        "/Script/Engine.SpotLight",
+    "pointlight":        "/Script/Engine.PointLight",
+    "spotlight":         "/Script/Engine.SpotLight",
     "directional_light": "/Script/Engine.DirectionalLight",
+    "cinecameraactor":   "/Script/CinematicCamera.CineCameraActor",
+    "cameraactor":       "/Script/Engine.CameraActor",
 }
 
 

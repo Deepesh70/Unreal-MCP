@@ -1,8 +1,5 @@
 """
-Transform Tool — modify actor transforms (scale, position, rotation).
-
-Currently implements scaling; extend this module for future movement
-and rotation tools.
+Transform Tools — set location, rotation, and scale of actors.
 """
 
 from unreal_mcp import mcp
@@ -22,12 +19,46 @@ async def set_actor_scale(
         response = await send_ue_ws_command(
             object_path=actor_path,
             function_name="SetActorScale3D",
-            parameters={
-                "NewScale3D": {"X": scale_x, "Y": scale_y, "Z": scale_z}
-            },
+            parameters={"NewScale3D": {"X": scale_x, "Y": scale_y, "Z": scale_z}},
         )
-        short_name = actor_path.split(".")[-1]
-        return f"Successfully scaled {short_name} to ({scale_x}, {scale_y}, {scale_z})"
-
+        return f"Scaled {actor_path} to ({scale_x}, {scale_y}, {scale_z})"
     except Exception as e:
-        return format_error(e, "Ensure you used the exact full path.")
+        return format_error(e, "Check actor path.")
+
+
+@mcp.tool()
+async def set_actor_rotation(
+    actor_path: str,
+    pitch: float = 0,
+    yaw: float = 0,
+    roll: float = 0,
+) -> str:
+    """Rotate an actor. Pitch=up/down, Yaw=left/right, Roll=tilt."""
+    try:
+        response = await send_ue_ws_command(
+            object_path=actor_path,
+            function_name="SetActorRotation",
+            parameters={"NewRotation": {"Pitch": pitch, "Yaw": yaw, "Roll": roll}, "bTeleportPhysics": False},
+        )
+        return f"Rotated {actor_path} to (Pitch={pitch}, Yaw={yaw}, Roll={roll})"
+    except Exception as e:
+        return format_error(e, "Check actor path.")
+
+
+@mcp.tool()
+async def set_actor_location(
+    actor_path: str,
+    x: float,
+    y: float,
+    z: float,
+) -> str:
+    """Move an actor to a new position."""
+    try:
+        response = await send_ue_ws_command(
+            object_path=actor_path,
+            function_name="SetActorLocation",
+            parameters={"NewLocation": {"X": x, "Y": y, "Z": z}, "bSweep": False},
+        )
+        return f"Moved {actor_path} to ({x}, {y}, {z})"
+    except Exception as e:
+        return format_error(e, "Check actor path.")
