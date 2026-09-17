@@ -1,10 +1,12 @@
 // ProceduralBuildingTypes.h — Data structures for the Procedural City Builder.
 //
 // This file contains all UStructs used by AProceduralCityManager:
-//   - FHISMPoolKey        : Composite key for the HISM component pool
-//   - FHISMInstanceRef    : Tracks one HISM instance (component + index)
-//   - FProceduralBuilding : Ledger entry — one per building
-//   - FAssetDictionaryRow : DataTable row mapping Style tags to meshes/materials
+//   - FHISMPoolKey            : Composite key for the HISM component pool
+//   - FHISMInstanceRef        : Tracks one HISM instance (component + index)
+//   - FProceduralBuilding     : Ledger entry — one per building
+//   - FProceduralConnection   : Tracks a spline road/path between buildings
+//   - FAssetDictionaryRow     : DataTable row mapping Style tags to meshes/materials
+//   - FBlueprintDictionaryRow : DataTable row mapping Blueprint keys to actor classes
 //
 // SETUP: Copy this file to your Unreal project's Source/ directory.
 //        Replace {{PROJECT_API}} with your project's API export macro.
@@ -84,6 +86,10 @@ struct FProceduralBuilding
 	UPROPERTY()
 	FVector Location = FVector::ZeroVector;
 
+	// Bounding box extents (half-size) for relational placement queries
+	UPROPERTY()
+	FVector Extents = FVector::ZeroVector;
+
 	UPROPERTY()
 	TArray<FHISMInstanceRef> Instances;
 };
@@ -117,4 +123,49 @@ struct FAssetDictionaryRow : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
 	TSoftObjectPtr<UMaterialInterface> RoofMaterial;
+};
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  FProceduralConnection — Tracks a spline road/path connection.
+//  Used by HandleConnect to manage roads between buildings.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USTRUCT()
+struct FProceduralConnection
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString ConnectionID;
+
+	UPROPERTY()
+	FString MaterialKey;
+
+	UPROPERTY()
+	TArray<FVector> Nodes;
+
+	UPROPERTY()
+	float Width = 300.0f;
+
+	// HISM instances used for the road segments
+	UPROPERTY()
+	TArray<FHISMInstanceRef> SegmentInstances;
+};
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  FBlueprintDictionaryRow — DataTable row for Blueprint Actor spawning.
+//  Maps a semantic BlueprintKey to an actual Actor class.
+//  Used by HandleSpawnBlueprint to resolve blueprint keys to classes.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USTRUCT(BlueprintType)
+struct FBlueprintDictionaryRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blueprint")
+	TSoftClassPtr<AActor> ActorClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blueprint")
+	FString Description;
 };

@@ -69,3 +69,7 @@ CLAUDE.md
 !.agents/
 .agents/*
 !.agents/mcp_config.json.example
+.gitnexus
+AGENTS.md
+CLAUDE.md
+.claude/

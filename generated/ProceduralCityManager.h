@@ -14,19 +14,25 @@
 #include "ProceduralBuildingTypes.h"
 
 // Geometry Scripting — runtime boolean operations and dynamic mesh generation
+// To enable: add "GeometryScriptingCore", "DynamicMesh" to Build.cs and
+// define WITH_GEOMETRY_SCRIPTING=1 in your Build.cs PublicDefinitions.
+#if defined(WITH_GEOMETRY_SCRIPTING) && WITH_GEOMETRY_SCRIPTING
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "GeometryScript/MeshBooleanFunctions.h"
 #include "Components/DynamicMeshComponent.h"
 #include "UDynamicMesh.h"
+#endif
 
 #include "ProceduralCityManager.generated.h"
 
 class UDataTable;
 class UHierarchicalInstancedStaticMeshComponent;
+#if defined(WITH_GEOMETRY_SCRIPTING) && WITH_GEOMETRY_SCRIPTING
 class UDynamicMeshComponent;
+#endif
 
 UCLASS(Blueprintable, Placeable, meta = (DisplayName = "Procedural City Manager"))
-class {{PROJECT_API}} AProceduralCityManager : public AActor
+class AUTOMATOR_API AProceduralCityManager : public AActor
 {
 	GENERATED_BODY()
 
@@ -85,6 +91,14 @@ private:
 	FString HandleScanArea(TSharedPtr<FJsonObject> Json);
 	FString HandleGenerateGeometry(TSharedPtr<FJsonObject> Json);
 
+	// ── New Intent Handlers (Features 1-5) ──────────────────────
+	FString HandleQueryBuilding(TSharedPtr<FJsonObject> Json);
+	FString HandleFlatten(TSharedPtr<FJsonObject> Json);
+	FString HandleSculpt(TSharedPtr<FJsonObject> Json);
+	FString HandleConnect(TSharedPtr<FJsonObject> Json);
+	FString HandleSpawnBlueprint(TSharedPtr<FJsonObject> Json);
+	FString HandleScreenshot(TSharedPtr<FJsonObject> Json);
+
 	// ── Core Building Logic ─────────────────────────────────────
 	// Routes by StructureType: Building, Solid, Composite
 	bool SpawnBuildingGeometry(const FString& ID, const FString& StyleKey,
@@ -114,6 +128,7 @@ private:
 		UStaticMesh* Mesh, UMaterialInterface* Material = nullptr);
 
 	// ── Geometry Scripting Helpers ───────────────────────────────
+#if defined(WITH_GEOMETRY_SCRIPTING) && WITH_GEOMETRY_SCRIPTING
 	// Appends a primitive shape onto a UDynamicMesh at the given transform.
 	void AppendPrimitiveToMesh(UDynamicMesh* TargetMesh,
 		const FString& ShapeType, FVector Dimensions,
@@ -124,8 +139,20 @@ private:
 		const FString& ColorName);
 
 	// Pool of DynamicMesh components — one per GenerateGeometry ID.
-	UPROPERTY()
+	// Note: no UPROPERTY() — UHT forbids it inside #if blocks.
 	TMap<FString, TObjectPtr<UDynamicMeshComponent>> DynamicMeshPool;
+#endif
+
+	// ── Connection Pool (Feature 4: Roads) ──────────────────────
+	UPROPERTY()
+	TMap<FString, FProceduralConnection> ConnectionLedger;
+
+	// ── Blueprint Actor Pool (Feature 5) ────────────────────────
+	UPROPERTY()
+	TMap<FString, TObjectPtr<AActor>> BlueprintActorPool;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Assets")
+	TObjectPtr<UDataTable> BlueprintDictionary;
 
 	// ── Mesh Resolution ─────────────────────────────────────────
 	UStaticMesh* GetMeshForShape(const FString& ShapeName);
@@ -171,4 +198,8 @@ private:
 
 	// Serializes an FVector to a JSON array [X, Y, Z].
 	static TArray<TSharedPtr<FJsonValue>> VectorToJsonArray(FVector Vec);
+
+	// ── Bounding Box Helpers (Feature 1: Relational Spawning) ──
+	// Computes the AABB extents of a building from its HISM instances.
+	FVector ComputeBuildingExtents(const FProceduralBuilding& Building);
 };
