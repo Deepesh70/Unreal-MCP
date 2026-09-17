@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "unreal-mcp": {
+      "command": "python",
+      "args": [
+        "server.py",
+        "--stdio"
+      ],
+      "env": {
+        "UE_WS_URL": "ws://127.0.0.1:30020"
+      }
+    }
+  }
+}
