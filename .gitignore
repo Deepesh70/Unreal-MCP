@@ -62,3 +62,5 @@ CLAUDE.md
 *.pickle
 
 *.exe
+.mcp.json
+.agents/
